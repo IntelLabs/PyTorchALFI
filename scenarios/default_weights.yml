@@ -1,0 +1,225 @@
+##################################
+#  Basic wrapper configuration   #
+##################################
+# modeldir: customize location where to look for Pytorch models
+# default: model (relativ to working directory)
+# optional
+# uncomment below line
+#modeldir: "model"
+
+# print: boolean, print model structure and state structure after loading
+# optional
+# default: False
+print: False
+
+# sourcedev: device type for which model state was saved
+# mandatory, choices=['cpu', 'cuda']
+sourcedev: cuda
+
+# fi_logfile: name of logfile to store the used FI scenario. Directory will be 'logs'.
+# A timestamp and the ending.bin will be added.
+# optional
+# uncomment below line
+fi_logfile: fault_rates_alexnet_10
+
+# read_from_file: absolute path to logfile to read previously stored FI scenario from.
+# also see fi-logfile
+# optional
+# uncomment below line
+# read_from_file: 'logs/fault_rates_weights_msb_600.bin'
+
+# modelname: type of model: model file should be in models directory unless --model-dir is set.
+# 'pre-defined are: lenet, resnet18, resnet34, resnet50, resnet101, '
+# 'resnet152, densenet121, densenet169, densenet201, densenet_cifar, '
+# 'resnext29_2x64d, resnext29_4x64d, resnext29_8x64d, resnext29_32x4d'
+# names can be lower case or camel case
+# mandatory
+modelname: yolov3
+
+# state: complete path to location of model state
+# if you state as relative path it must be relative to your main python file
+# mandatory
+state: state/lenet_teststate2.pth
+
+#################################
+#   definition of FI scenario   #
+#################################
+
+# define type of run. Valid values are: {single|accumulate}
+# single: at each injection run only the faults for that run are injected
+# accumulate: at each injection run the faults for that run and all previous run are applied together
+# default: single
+run_type: single
+
+# This determines the total number of fault definitions that are prepared
+# The relevant parameters are:
+# dataset_size: number of images in your test dataset
+# num_runs: number of times you plan to iterate through the whole dataset
+# the following 2 arguments are mutually exclusive:
+# num_fault_per_image: how many faults should be injected per image
+# max_fault_rate: maximum rate of faults you would like to inject -> as floating point number
+# this is a max value because you could decide during run time to use a smaller fault rate for a specific
+# injection, the maximum value assures that enough faults are prepared
+# the absolute number of faults will be determined by the following other parameters:
+# a: rnd_mode (either neurons or weights) the number of faults is calculated based on the number of relevant neurons
+# or weights respectively in the model
+# b: layer_types (either conv2d, conv3d or fcc) relevant neurons or weights are those related to the selected layer type
+dataset_size: 1 # keep at 1 for weight injection if used only once per epoch
+num_runs: 1000
+# you can only set one of num_faults_per_image or max_fault_rate
+max_faults_per_image: 1
+#max_fault_rate: 0.01
+
+# define if injected faulty values are to be created randomly (one per run)
+# or given statically.
+# valid values are {random|static}
+# In The latter case there need to be as many values
+# as num_runs defined.
+# default: random
+value_type: random
+#value_type: static
+
+#####################################################################################
+#                           types of layers supported                               #
+#####################################################################################
+# comma separated list in square brackets (yaml convention).
+# default is conv2
+# supported layers: conv2, fcc, conv3
+# conv2d: 2D convolution layer
+# conv3d: 3D convolution layer
+# fcc: fully connected layer = nn.Linear type in pytorch
+
+layer_types: [conv2d, fcc]
+
+#####################################################################################
+#                           Random fault definition                                 #
+#####################################################################################
+# this section is ignored if value_type = static
+# There are 2 basic injection modes: {weights|neurons}
+# For NEURONS the parameter for k is ignored. The following degrees of freedom exist: Batches, Layers (out of conv layers),
+# location (height + width + channel) of feature map and the value itself.
+# for each of these except batch the following options exist: {same|change}
+# for batch the following options exist: {each|same|change}
+# same: in the first run a random value is calculated once, it remains constant afterwards
+# change: in each run a new random value is calculated
+# each: (batch only) apply to every batch
+# There is a dependency between layers and locations.
+# If layers is set to 'change' then location also has to be 'change'
+# because layers have different sizes and the same location in a different
+# layer might be invalid.
+#
+# For WEIGHTS the parameter for batch is ignored. The following degrees of freedom exist: Layers (out of conv layers),
+# location (height + width + channel + k)  and the value itself
+# a setting for batch is ignored in context of weight injection
+# default: neurons
+# rnd_mode: neurons
+rnd_mode: weights
+
+# mandatory, no defaults
+# batch only used for neuron
+rnd_batch: change
+# rnd_layer allows to set the index of the layer where all fault injections occur
+# this is a 0 based index: e.g. for first layer set it to 0
+# this is currently only relevant for convolutional layers
+# rnd_layer and rnd_location should be changed to same setting
+# layer change and location same does not make sense beause layer dimensions differ
+rnd_layer: change
+# select layer randomly based on the number of neurons per layer, layer with more neurons are weighted higher
+rnd_layer_weighted: True
+rnd_location: change
+rnd_value: change
+# for value also complete the next section
+
+#
+# For the value itself there are 2 options: {number|bitflip}
+# in the first case a min-max range needs to be given
+# in the second case the maximum bit position and optionally
+# a bit range is given which can also be a single number
+# both cases are mutual exclusive
+#rnd_value_type: number
+#rnd_value_min: 100
+#rnd_value_max: 1000
+
+rnd_value_type: bitflip
+rnd_value_bits: 32
+# rnd_bit_range: optional, defines the bit range where a bit flip should happen
+# the index is 0 based
+# [from, to], both values are included in the range
+# if only one value us given then exactly this bit is flipped
+# rnd_bit_range: [1]
+rnd_bit_range: [0,8]
+
+#####################################################################################
+#                           Static fault definition                                 #
+#####################################################################################
+# this section is ignored if value_type = random
+### The number of entries per line below must match the entry for num_runs !!! ###
+# if num_runs is smaller than the list size below only <num_run> values will be uses
+# if num_runs is larger an error will be created
+# each of the degrees of freedom need to be set:
+# Batches, Layers (out of conv layers),
+# height, width, channel of feature map or weight and the value
+# in case of bit flip, provide the index of the bit you want to flip (e.g. the integer 8 for the 8th bit)
+# accordingly there are to number types {number|bitflip}
+# batches are special because besides the number for a batch we can also state
+# that all batchs are used for fault injection. In that case insert the letter 'A'.
+# If only a specific batch should be used per run insert the batch number.
+
+# the section below can be loaded from an external file:
+# define a switch {file|inline} to determine the location you which
+# to read the values from
+# default: inline
+st_data_location: inline
+#st_file_location: <path to data file>
+
+# again state if to insert into weights or neurons
+# in case of weights the entries for batches is ignored
+# default: neurons
+# st_mode: neurons
+st_mode: weights
+
+st_value_type: number
+# batches ignored for weight injection
+st_batches: [-1,-1,-1]
+st_layers: [1,1,2]
+# you need to know the dimension of your feature set or weight for each layer
+# values that are out of range will be replaced by random values
+st_H: [3,3,4]
+st_W: [0,2,4]
+st_C: [0,1,0]
+# K is ignored for neuron injection
+st_K: [1,1,1]
+st_value: [1200,30,2000]
+
+#####################################################################################
+#                           PytorchFI parameters                                    #
+#####################################################################################
+# parameters to initialize the PytorchFI fault injector
+# ptf_H: height of input images in pixels
+# ptf_W: width of input images in pixels
+# ptf_D: depth of input images -> only needed for 3dconv layers
+# ptf_C: number of input channels (default: 3)
+# ptf_batch_size: number of images processed at the same time
+# ptf_H: 224
+# ptf_W: 224
+ptf_H: 370
+ptf_W: 1224
+ptf_D: -1
+ptf_C: 3
+ptf_batch_size: 24
+
+#####################################################################################
+#                           Data set definition                                     #
+#####################################################################################
+# below lines are optional if you define your own data loader in your model
+ds_location: data/cifar-10-batches-py
+ds_batch_size: 1
+ds_loader_class: imagenet
+# how many images are retrieved from test loader
+# optional, default is to use the whole test dataset
+ds_test_size: 10
+####################################################################################
+#                           User fault-file save location                           #
+####################################################################################
+save_fault_file_dir: 'result_files'
+# save_fault_file_dir: 'result_files/imagenet/'

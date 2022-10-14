@@ -1,12 +1,10 @@
 # Copyright 2022 Intel Corporation.
 # SPDX-License-Identifier: MIT
 
-from math import ceil
 import pickle
 import logging
 import os
 import torch
-from torch.utils import data
 from pathlib import Path
 from tqdm import tqdm
 import numpy as np
@@ -16,33 +14,16 @@ import pandas as pd
 from datetime import datetime
 import time
 from os.path import dirname as up
-from numpy import quantile
 import json
 import torchvision
 from copy import deepcopy
-
-
-from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks_v3, get_max_min_lists_in, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks, set_feature_trace_hooks
+from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks_v3, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks, set_feature_trace_hooks
 from alficore.ptfiwrap_utils.utils import read_yaml
 from alficore.wrapper.ptfiwrap import ptfiwrap
-from alficore.evaluation.coco_evaluation import COCOEvaluator
 from alficore.resiliency_methods.ranger import Ranger, Ranger_trivial, Ranger_BackFlip, Ranger_Clip, Ranger_FmapAvg, Ranger_FmapRescale
-from alficore.ptfiwrap_utils.helper_functions import TEM_Dataloader_attr
 
 resil_methods = {"ranger": Ranger, "ranger_trivial": Ranger_trivial, "ranger_backFlip": Ranger_BackFlip, "ranger_clip": Ranger_Clip, "ranger_FmapAvg": Ranger_FmapAvg, "ranger_FmapRescale": Ranger_FmapRescale}
 
-class NumpyEncoder(json.JSONEncoder):
-    def default(self, obj):
-        # np.set_printoptions(suppress=True)
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return np.round(float(obj), decimals=2)
-        elif isinstance(obj, np.ndarray):
-            obj = np.round(obj, decimals=2)
-            return obj.tolist()
-        else:
-            return super(NumpyEncoder, self).default(obj)
 
 class TestErrorModels_ImgClass:
     def __init__(self, model=None, resil_model=None, **kwargs):
@@ -129,8 +110,9 @@ class TestErrorModels_ImgClass:
             self.resil_corr_activation_trace = None
         if self.inf_nan_monitoring:
             self.inf_nan_monitoring_init()
-        ## end Features to monitor
 
+
+        ## end Features to monitor
         self.model_eval_method = kwargs.get("eval_method", ['coco',])
         self.config_location   = kwargs.get("config_location", None)
         self.device            = kwargs.get("device", torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
@@ -225,7 +207,9 @@ class TestErrorModels_ImgClass:
             from alficore.dataloader.coco_loader import CoCo_dataloader
             ##TODO: adapt dataloaders to receive dl_attr as function arguments
             self.dataloader = CoCo_dataloader(dataset_type='val', batch_size=self.batch_size, device=self.device, sampleN=self.dl_sampleN, shuffle=self.dl_shuffle)
-
+        elif self.dl_attr.dl_dataset_name == 'mnist':
+            from alficore.dataloader.mnist_loader import MNIST_dataloader
+            self.dataloader = MNIST_dataloader(dl_attr=self.dl_attr)
 
     def get_nan_inf_columns(self):
         output_columns = []
@@ -320,28 +304,6 @@ class TestErrorModels_ImgClass:
                     {} dont match".format(num_runs, used_model, len(bit_flip_monitor), len(bit_flips_direc))
                 assert runset_length == len(bit_flips_direc), "Epoch- {}: {} Sanity check: runset len after tiling (if inj policy is per epoch or per batch) - \
                     {} and total number of bit flips captured - {} dont match".format(num_runs, used_model, runset_length, len(bit_flips_direc))
-
-    def __ranger_detector_with_hooks(self, save_acts, hook_handles, hook_list):
-        activated = [] #protection layers activated in one image batch!
-        try:
-            for i in range(len(hook_handles)):
-                hook_handles[i].remove()
-                hook_list[i].clear()
-
-            # Save ranger activations
-            act_in = get_max_min_lists_in(save_acts.inputs) 
-            save_acts.clear()  # clear the hook lists, otherwise memory leakage
-
-            for n in range(len(act_in)): #images
-                act_layers = 0
-
-                for ran in range(len(act_in[n])):
-                    if (act_in[n][ran, 0] < self.ranger_bounds[ran][0]) or (act_in[n][ran, 1] > self.ranger_bounds[ran][1]): #todo: just different or >, <?
-                        act_layers += 1
-                activated.append(act_layers)
-        except ValueError:
-            print("Oops!  That was no valid bounds. Check the bounds and Try again...")
-        return activated
 
     
     def __clean_ranger_hooks(self, hook_handles, hook_list):
@@ -457,188 +419,172 @@ class TestErrorModels_ImgClass:
 
         return output, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer,  quant_list, ftrace_list
 
-    def __run_inference(self):
+
+
+    def _processing(self, orig_output):
         __TOP_RES = 5
-        if self.orig_model_run:
-            if self.golden_epoch:
-                self.ORIG_MODEL.eval()
-            if self.orig_model_FI_run:
-                self.CORR_MODEL.eval()
-        if self.resil_model_run:
-            if self.golden_epoch:
-                self.RESIL_MODEL.eval()
-            if self.resil_model_FI_run:
-                self.RESIL_CORR_MODEL.eval()
+
+        _orig_output = orig_output
+        _orig_output = torch.unsqueeze(_orig_output, 0)
+        percentage = torch.nn.functional.softmax(_orig_output, dim=1)[0] * 100 ## entropy should receive normalised probabiiities
+        _, orig_index = torch.sort(_orig_output, descending=True)
+        if self.compute_entropy:
+            orig_model_entropy = self.entropy(percentage)
+        else:
+            orig_model_entropy = None
+
+        if self.device.type == 'cuda':
+            orig_perct = np.round(percentage[orig_index[0][:__TOP_RES]].cpu().detach().numpy(), decimals=2)
+            orig_index = orig_index[0][:__TOP_RES].cpu().detach().numpy()
+        else:
+            orig_perct = np.round(percentage[orig_index[0][:__TOP_RES]].detach().numpy(), decimals=2)
+            orig_index = orig_index[0][:__TOP_RES].detach().numpy()
+
+        return orig_model_entropy, orig_perct, orig_index
+
+    def _run_inference_orig_model(self):
+        self.ORIG_MODEL.eval()
+        start = time.time()
+        orig_output = self.ORIG_MODEL(self.dataloader.images)
+        self.time_orig = time.time() - start
+        # len(orig_output)
+        return orig_output
+
+    def _run_inference_corr_model(self):
+        start = time.time()   
+        if self.corr_img:
+            self.CORR_MODEL = self.ORIG_MODEL
+        self.CORR_MODEL.eval()
+        corr_output, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial', corr_img=self.corr_img)
+        if self.inf_nan_monitoring:
+            self.nan_flag_image_corr_model = nan_dict_corr['flag'] #Flag true or false per image depending if nan found at any layer
+            self.nan_inf_flag_image_corr_model = [nan_dict_corr['flag'][h] or inf_dict_corr['flag'][h] for h in range(len(inf_dict_corr['flag']))]
+            self.nan_inf_overall_layers_image_corr_model = [np.unique(nan_dict_corr['overall'][i] + inf_dict_corr['overall'][i]).tolist() for i in range(len(nan_dict_corr['overall']))]
+            self.nan_inf_first_occurrence_image_corr_model = [i for i in nan_dict_corr['first_occur_compare']]
+        if self.ranger_detector:
+            self.corr_ranger_actvns.extend(detected_activations)
+        if self.quant_extr:
+            self.quant_list_corr.extend(quant_list)
+        if self.ftrace_extr:
+            self.ftrace_list_corr.extend(ftrace_list)
+        if self.sim_score:
+            corr_penulLayer =  torch.cat([x.unsqueeze(0) for x in penulLayer])
+            if self.corr_penulLayer is not None:
+                self.corr_penulLayer = torch.hstack([self.corr_penulLayer, corr_penulLayer])
+            else:
+                self.corr_penulLayer = torch.hstack([corr_penulLayer])
+        if self.activation_trace:
+            trace_output = trace_output if trace_output else []
+            if self.corr_activation_trace is not None:
+                self.corr_activation_trace = torch.cat((self.corr_activation_trace, trace_output), 0)
+            else:
+                self.corr_activation_trace = trace_output
+
+        self.time_corr = time.time() - start
+        # len_output = len(corr_output)
+        return corr_output 
+            
+    def _run_inference_resil_model(self):
+        self.RESIL_MODEL.eval()
+        start = time.time()
+        resil_output, nan_dict_resil, inf_dict_resil, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_MODEL, resil=self.resil_name.lower())
+        if self.inf_nan_monitoring:
+            self.nan_flag_image_resil_model = nan_dict_resil['flag'] #Flag true or false per image depending if nan found at any layer
+            self.nan_inf_flag_image_resil_model = [nan_dict_resil['flag'][h] or inf_dict_resil['flag'][h] for h in range(len(inf_dict_resil['flag']))]
+            self.nan_inf_overall_layers_image_resil_model = [np.unique(nan_dict_resil['overall'][i] + inf_dict_resil['overall'][i]).tolist() for i in range(len(nan_dict_resil['overall']))]
+            self.nan_inf_first_occurrence_image_resil_model = [i for i in nan_dict_resil['first_occur_compare']]
+        if self.ranger_detector:
+            self.resil_ranger_actvns.extend(detected_activations)
+        if self.quant_extr:
+            self.quant_list_resil.extend(quant_list)
+        if self.ftrace_extr:
+            self.ftrace_list_resil.extend(ftrace_list)
+        if self.sim_score:
+            resil_penulLayer =  torch.cat([x.unsqueeze(0) for x in penulLayer])
+            if self.resil_penulLayer is not None:
+                self.resil_penulLayer = torch.hstack([self.resil_penulLayer, resil_penulLayer])
+            else:
+                self.resil_penulLayer = torch.hstack([resil_penulLayer])
+        if self.activation_trace:
+            trace_output = trace_output if trace_output else []
+            if self.resil_activation_trace is not None:
+                self.resil_activation_trace = torch.cat((self.resil_activation_trace, trace_output), 0)
+            else:
+                self.resil_activation_trace = trace_output
+        resil_output = self.RESIL_MODEL(self.dataloader.images)
+        self.time_resil = time.time() - start
+        # len_output = len(resil_output)
+        return resil_output
+
+    def run_inference_resil_corr_model(self):
+        start = time.time()
+        if self.corr_img:
+            self.RESIL_CORR_MODEL = self.RESIL_MODEL
+        self.RESIL_CORR_MODEL.eval()
+        resil_corr_output, nan_dict_resil_corr, inf_dict_resil_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_CORR_MODEL, resil=self.resil_name.lower(), corr_img=self.corr_img)
+
+        if self.inf_nan_monitoring:
+            self.nan_flag_image_resil_corr_model = nan_dict_resil_corr['flag'] #Flag true or false per image depending if nan found at any layer
+            self.nan_inf_flag_image_resil_corr_model = [nan_dict_resil_corr['flag'][h] or inf_dict_resil_corr['flag'][h] for h in range(len(inf_dict_resil_corr['flag']))]
+            self.nan_inf_overall_layers_image_resil_corr_model = [np.unique(nan_dict_resil_corr['overall'][i] + inf_dict_resil_corr['overall'][i]).tolist() for i in range(len(nan_dict_resil_corr['overall']))]
+            self.nan_inf_first_occurrence_image_resil_corr_model = [i for i in nan_dict_resil_corr['first_occur_compare']]
+        if self.ranger_detector:
+            self.resil_corr_ranger_actvns.extend(detected_activations)
+        if self.quant_extr:
+            self.quant_list_resil_corr.extend(quant_list)
+        if self.ftrace_extr:
+            self.ftrace_list_resil_corr.extend(ftrace_list)
+        if self.sim_score:
+            resil_corr_penulLayer =  torch.cat([x.unsqueeze(0) for x in penulLayer])
+            if self.resil_corr_penulLayer is not None:
+                self.resil_corr_penulLayer = torch.hstack([self.resil_corr_penulLayer, resil_corr_penulLayer])
+            else:
+                self.resil_corr_penulLayer = torch.hstack([resil_corr_penulLayer])
+
+        if self.activation_trace:
+            trace_output = trace_output if trace_output else []
+            if self.resil_corr_activation_trace is not None:
+                self.resil_corr_activation_trace = torch.cat((self.resil_corr_activation_trace, trace_output), 0)
+            else:
+                self.resil_corr_activation_trace = trace_output
+        self.time_corr_resil = time.time() - start
+        # len_output = len(resil_corr_output)
+        return resil_corr_output
+
+
+    def __run_inference(self):
 
         with torch.no_grad():
             if self.orig_model_run:
-
                 if self.golden_epoch:
-                    start = time.time()
-                    orig_output = self.ORIG_MODEL(self.dataloader.images)
-                    self.time_orig = time.time() - start
-                    len_output = len(orig_output)
+                    orig_output = self._run_inference_orig_model()
                 if self.orig_model_FI_run:
-                    start = time.time()
-                    if self.corr_img:
-                        self.CORR_MODEL = self.ORIG_MODEL
-                    corr_output, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial', corr_img=self.corr_img)
-                    if self.inf_nan_monitoring:
-                        nan_flag_image_corr_model = nan_dict_corr['flag'] #Flag true or false per image depending if nan found at any layer
-                        nan_inf_flag_image_corr_model = [nan_dict_corr['flag'][h] or inf_dict_corr['flag'][h] for h in range(len(inf_dict_corr['flag']))]
-                        nan_inf_overall_layers_image_corr_model = [np.unique(nan_dict_corr['overall'][i] + inf_dict_corr['overall'][i]).tolist() for i in range(len(nan_dict_corr['overall']))]
-                        nan_inf_first_occurrence_image_corr_model = [i for i in nan_dict_corr['first_occur_compare']]
-                    if self.ranger_detector:
-                        self.corr_ranger_actvns.extend(detected_activations)
-                    if self.quant_extr:
-                        self.quant_list_corr.extend(quant_list)
-                    if self.ftrace_extr:
-                        self.ftrace_list_corr.extend(ftrace_list)
-                    if self.sim_score:
-                        corr_penulLayer =  torch.cat([x.unsqueeze(0) for x in penulLayer])
-                        if self.corr_penulLayer is not None:
-                            self.corr_penulLayer = torch.hstack([self.corr_penulLayer, corr_penulLayer])
-                        else:
-                            self.corr_penulLayer = torch.hstack([corr_penulLayer])
-                    if self.activation_trace:
-                        trace_output = trace_output if trace_output else []
-                        if self.corr_activation_trace is not None:
-                            self.corr_activation_trace = torch.cat((self.corr_activation_trace, trace_output), 0)
-                        else:
-                            self.corr_activation_trace = trace_output
-
-                    self.time_corr = time.time() - start
-                    len_output = len(corr_output)
+                    corr_output = self._run_inference_corr_model()
 
             if self.resil_model_run:
                 if self.golden_epoch:
-                    start = time.time()
-                    resil_output, nan_dict_resil, inf_dict_resil, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_MODEL, resil=self.resil_name.lower())
-                    if self.inf_nan_monitoring:
-                        nan_flag_image_resil_model = nan_dict_resil['flag'] #Flag true or false per image depending if nan found at any layer
-                        nan_inf_flag_image_resil_model = [nan_dict_resil['flag'][h] or inf_dict_resil['flag'][h] for h in range(len(inf_dict_resil['flag']))]
-                        nan_inf_overall_layers_image_resil_model = [np.unique(nan_dict_resil['overall'][i] + inf_dict_resil['overall'][i]).tolist() for i in range(len(nan_dict_resil['overall']))]
-                        nan_inf_first_occurrence_image_resil_model = [i for i in nan_dict_resil['first_occur_compare']]
-                    if self.ranger_detector:
-                        self.resil_ranger_actvns.extend(detected_activations)
-                    if self.quant_extr:
-                        self.quant_list_resil.extend(quant_list)
-                    if self.ftrace_extr:
-                        self.ftrace_list_resil.extend(ftrace_list)
-                    if self.sim_score:
-                        resil_penulLayer =  torch.cat([x.unsqueeze(0) for x in penulLayer])
-                        if self.resil_penulLayer is not None:
-                            self.resil_penulLayer = torch.hstack([self.resil_penulLayer, resil_penulLayer])
-                        else:
-                            self.resil_penulLayer = torch.hstack([resil_penulLayer])
-                    if self.activation_trace:
-                        trace_output = trace_output if trace_output else []
-                        if self.resil_activation_trace is not None:
-                            self.resil_activation_trace = torch.cat((self.resil_activation_trace, trace_output), 0)
-                        else:
-                            self.resil_activation_trace = trace_output
-                    resil_output = self.RESIL_MODEL(self.dataloader.images)
-                    self.time_resil = time.time() - start
-                    len_output = len(resil_output)
-
+                    resil_output = self._run_inference_resil_model()
                 if self.resil_model_FI_run:
-                    start = time.time()
-                    if self.corr_img:
-                        self.RESIL_CORR_MODEL = self.RESIL_MODEL
-                    resil_corr_output, nan_dict_resil_corr, inf_dict_resil_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_CORR_MODEL, resil=self.resil_name.lower(), corr_img=self.corr_img)
-            
-                    if self.inf_nan_monitoring:
-                        nan_flag_image_resil_corr_model = nan_dict_resil_corr['flag'] #Flag true or false per image depending if nan found at any layer
-                        nan_inf_flag_image_resil_corr_model = [nan_dict_resil_corr['flag'][h] or inf_dict_resil_corr['flag'][h] for h in range(len(inf_dict_resil_corr['flag']))]
-                        nan_inf_overall_layers_image_resil_corr_model = [np.unique(nan_dict_resil_corr['overall'][i] + inf_dict_resil_corr['overall'][i]).tolist() for i in range(len(nan_dict_resil_corr['overall']))]
-                        nan_inf_first_occurrence_image_resil_corr_model = [i for i in nan_dict_resil_corr['first_occur_compare']]
-                    if self.ranger_detector:
-                        self.resil_corr_ranger_actvns.extend(detected_activations)
-                    if self.quant_extr:
-                        self.quant_list_resil_corr.extend(quant_list)
-                    if self.ftrace_extr:
-                        self.ftrace_list_resil_corr.extend(ftrace_list)
-                    if self.sim_score:
-                        resil_corr_penulLayer =  torch.cat([x.unsqueeze(0) for x in penulLayer])
-                        if self.resil_corr_penulLayer is not None:
-                            self.resil_corr_penulLayer = torch.hstack([self.resil_corr_penulLayer, resil_corr_penulLayer])
-                        else:
-                            self.resil_corr_penulLayer = torch.hstack([resil_corr_penulLayer])
-                    if self.activation_trace:
-                        if self.resil_corr_activation_trace is not None:
-                            self.resil_corr_activation_trace = torch.cat((self.resil_corr_activation_trace, trace_output), 0)
-                        else:
-                            self.resil_corr_activation_trace = trace_output
-                    self.time_corr_resil = time.time() - start
-                    len_output = len(resil_corr_output)
+                    resil_corr_output = self.run_inference_resil_corr_model()
 
-            for i in range(len_output):
+
+            for i in range(len(orig_output)):
+                # Processing:
                 if self.golden_epoch:
                     if self.orig_model_run:
-                        _orig_output = orig_output[i]
-                        _orig_output = torch.unsqueeze(_orig_output, 0)
-                        percentage = torch.nn.functional.softmax(_orig_output, dim=1)[0] * 100 ## entropy should receive normalised probabiiities
-                        _, orig_index = torch.sort(_orig_output, descending=True)
-                        if self.compute_entropy:
-                            orig_model_entropy = self.entropy(percentage)
-
-                        if self.device.type == 'cuda':
-                            orig_perct = np.round(percentage[orig_index[0][:__TOP_RES]].cpu().detach().numpy(), decimals=2)
-                            orig_index = orig_index[0][:__TOP_RES].cpu().detach().numpy()
-                        else:
-                            orig_perct = np.round(percentage[orig_index[0][:__TOP_RES]].detach().numpy(), decimals=2)
-                            orig_index = orig_index[0][:__TOP_RES].detach().numpy()
-
+                        orig_model_entropy, orig_perct, orig_index = self._processing(orig_output[i])
                     if self.resil_model_run:
-                        _resil_output = resil_output[i]
-                        _resil_output = torch.unsqueeze(_resil_output, 0)
-                        resil_perct = torch.nn.functional.softmax(_resil_output, dim=1)[0] * 100
-                        _, resil_output_index = torch.sort(_resil_output, descending=True)
-                        if self.compute_entropy:
-                            resil_model_entropy = self.entropy(resil_perct)
-
-                        if self.device.type == 'cuda':
-                            resil_perct = np.round(resil_perct[resil_output_index[0][:__TOP_RES]].cpu().detach().numpy(), decimals=2)
-                            resil_output_index = resil_output_index[0][:__TOP_RES].cpu().detach().numpy()
-                        else:
-                            resil_perct = np.round(resil_perct[resil_output_index[0][:__TOP_RES]].detach().numpy(), decimals=2)
-                            resil_output_index = resil_output_index[0][:__TOP_RES].cpu().detach().numpy()
-
+                        resil_model_entropy, resil_perct, resil_output_index = self._processing(resil_output[i])
                 if self.orig_model_FI_run:
-                    _corr_output = corr_output[i]
-                    _corr_output = torch.unsqueeze(_corr_output, 0)
-                    corr_perct = torch.nn.functional.softmax(_corr_output, dim=1)[0] * 100
-                    _, corrupt_op_index = torch.sort(_corr_output, descending=True)
-                    if self.compute_entropy:
-                        corr_model_entropy = self.entropy(corr_perct)
+                    corr_model_entropy, corrupt_perct, corrupt_op_index = self._processing(corr_output[i])
+                if self.resil_model_FI_run:
+                    resil_corr_model_entropy, resil_corr_perct, resil_corr_output_index = self._processing(resil_corr_output[i])
 
-                    if self.device.type == 'cuda':
-                        corrupt_perct = np.round(corr_perct[corrupt_op_index[0][:__TOP_RES]].cpu().detach().numpy(), decimals=2)
-                        corrupt_op_index = corrupt_op_index[0][:__TOP_RES].cpu().detach().numpy()
-                    else:
-                        corrupt_perct = np.round(corr_perct[corrupt_op_index[0][:__TOP_RES]].detach().numpy(), decimals=2)
-                        corrupt_op_index = corrupt_op_index[0][:__TOP_RES].detach().numpy()
-
+                # Labels
                 if self.device.type == 'cuda':
                     label = self.dataloader.labels[i].cpu().detach().numpy()
                 else:
                     label = self.dataloader.labels[i].detach().numpy()
-
-                if self.resil_model_FI_run:
-                    _resil_corr_output = resil_corr_output[i]
-                    _resil_corr_output = torch.unsqueeze(_resil_corr_output, 0)
-                    resil_corr_perct = torch.nn.functional.softmax(_resil_corr_output, dim=1)[0] * 100
-                    _, resil_corr_output_index = torch.sort(_resil_corr_output, descending=True)
-
-                    if self.compute_entropy:
-                        resil_corr_model_entropy = self.entropy(resil_corr_perct)
-
-                    if self.device.type == 'cuda':
-                        resil_corr_perct = np.round(resil_corr_perct[resil_corr_output_index[0][:__TOP_RES]].cpu().detach().numpy(), decimals=2)
-                        resil_corr_output_index = resil_corr_output_index[0][:__TOP_RES].cpu().detach().numpy()
-                    else:
-                        resil_corr_perct = np.round(resil_corr_perct[resil_corr_output_index[0][:__TOP_RES]].detach().numpy(), decimals=2)
-                        resil_corr_output_index = resil_corr_output_index[0][:__TOP_RES].detach().numpy()
 
                 if not self.disable_FI:
                     bit_flip_pos = self.model_wrapper.get_fault_for_image(i)
@@ -660,8 +606,13 @@ class TestErrorModels_ImgClass:
                             df_i.extend([orig_model_entropy])
                         if self.resil_model_run:
                             df_i.extend([resil_model_entropy])
+
                     if self.inf_nan_monitoring:
-                        nan_inf_flags = [nan_flag_image_resil_model[i], nan_inf_flag_image_resil_model[i], nan_inf_overall_layers_image_resil_model[i], nan_inf_first_occurrence_image_resil_model[i]]
+                        if self.resil_model_run:
+                            nan_inf_flags = [self.nan_flag_image_resil_model[i], self.nan_inf_flag_image_resil_model[i], self.nan_inf_overall_layers_image_resil_model[i], self.nan_inf_first_occurrence_image_resil_model[i]]
+                        else:
+                            nan_inf_flags = [None, None, None, None]
+
                         df_i.extend(nan_inf_flags)
                     if self.golden_model_outputs is None:
                         self.golden_model_outputs = pd.DataFrame([df_i], columns = self.get_orig_output_columns())
@@ -674,8 +625,8 @@ class TestErrorModels_ImgClass:
                         if self.inf_nan_monitoring:
                             df_i = [self.dataloader.image_path[i], label, corrupt_op_index, resil_corr_output_index,
                                     corrupt_perct, resil_corr_perct, layer, channel_in, channel_out, channel, height, width, bit,
-                                    self.time_corr, self.time_corr_resil, nan_flag_image_corr_model[i], nan_inf_flag_image_corr_model[i], np.array(nan_inf_overall_layers_image_corr_model[i])[:1], np.array(nan_inf_first_occurrence_image_corr_model[i])[:1], 
-                                    nan_flag_image_resil_corr_model[i], nan_inf_flag_image_resil_corr_model[i], np.array(nan_inf_overall_layers_image_resil_corr_model[i])[:1], np.array(nan_inf_first_occurrence_image_resil_corr_model[i])[:1]]
+                                    self.time_corr, self.time_corr_resil, self.nan_flag_image_corr_model[i], self.nan_inf_flag_image_corr_model[i], np.array(self.nan_inf_overall_layers_image_corr_model[i])[:1], np.array(self.nan_inf_first_occurrence_image_corr_model[i])[:1], 
+                                    self.nan_flag_image_resil_corr_model[i], self.nan_inf_flag_image_resil_corr_model[i], np.array(self.nan_inf_overall_layers_image_resil_corr_model[i])[:1], np.array(self.nan_inf_first_occurrence_image_resil_corr_model[i])[:1]]
                         else:
                             df_i = [self.dataloader.image_path[i], label, corrupt_op_index, resil_corr_output_index,
                                     corrupt_perct, resil_corr_perct, layer, channel_in, channel_out, channel, height, width, bit,
@@ -684,8 +635,8 @@ class TestErrorModels_ImgClass:
                         if self.inf_nan_monitoring:
                             df_i = [self.dataloader.image_path[i], label, resil_corr_output_index,
                                     resil_corr_perct, layer, channel_in, channel_out, channel, height, width, bit,
-                                    self.time_corr, self.time_corr_resil, nan_flag_image_resil_corr_model[i], nan_inf_flag_image_resil_corr_model[i], 
-                                    nan_inf_overall_layers_image_resil_corr_model[i], nan_inf_first_occurrence_image_resil_corr_model[i]]
+                                    self.time_corr, self.time_corr_resil, self.nan_flag_image_resil_corr_model[i], self.nan_inf_flag_image_resil_corr_model[i], 
+                                    self.nan_inf_overall_layers_image_resil_corr_model[i], self.nan_inf_first_occurrence_image_resil_corr_model[i]]
                         else:
                             df_i = [self.dataloader.image_path[i], label, resil_corr_output_index,
                                     resil_corr_perct, layer, channel_in, channel_out, channel, height, width, bit, self.time_corr_resil]
@@ -693,7 +644,8 @@ class TestErrorModels_ImgClass:
                     if self.inf_nan_monitoring:
                         df_i = [self.dataloader.image_path[i], label, corrupt_op_index, corrupt_perct,
                                 layer, channel_in, channel_out, channel, height, width, bit, self.time_corr,
-                                nan_flag_image_corr_model[i], nan_inf_flag_image_corr_model[i], np.array(nan_inf_overall_layers_image_corr_model[i])[:1], np.array(nan_inf_first_occurrence_image_corr_model[i])[:1]]
+                                self.nan_flag_image_corr_model[i], self.nan_inf_flag_image_corr_model[i], np.array(self.nan_inf_overall_layers_image_corr_model[i])[:1], np.array(self.nan_inf_first_occurrence_image_corr_model[i])[:1]]
+
                     else:
                         df_i = [self.dataloader.image_path[i], label, corrupt_op_index, corrupt_perct,
                                 layer, channel_in, channel_out, channel, height, width, bit, self.time_corr]
@@ -918,7 +870,10 @@ class TestErrorModels_ImgClass:
 
     def save_results(self, image_fp=None, golden_epoch=False):
         if image_fp:
-            dataset_fp = pd.DataFrame({'dataset fp indx':self.dataloader.datasetfp})
+            try:
+                dataset_fp = pd.DataFrame({'dataset fp indx': self.dataloader.datasetfp})
+            except: #if empty
+                dataset_fp = pd.DataFrame({'dataset fp indx': self.dataloader.datasetfp}, index=[0])
             dataset_fp.to_csv(self.image_fp, index=True)
         if golden_epoch:
             print('storing golden resiliency output {} into {}'.format(self.func, self.fi_result_file + '_golden.csv'))
@@ -1273,3 +1228,4 @@ class TestErrorModels_ImgClass:
         self.save_results()
         self.save_monitored_features()
         self.__save_fault_file()
+

@@ -154,28 +154,6 @@ def get_label_info(filename):
     f.close()
     return bounds
 
-# def get_class_mapping():
-#     info = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/images_variant_test.txt')
-#     info_fam = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/images_manufacturer_test.txt')
-#     info_scores = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/test.txt')
-
-#     scs = []
-#     nms = []
-#     for i in range(len(info)):
-#         var = info[i][0][8:]
-#         man = info_fam[i][0][8:]
-#         aircraft_name = (man + " " + var, info[i][0][:7])[0]
-
-#         score = int(info_scores[i][0][12:])
-#         if score not in scs:
-#             scs.append(score)
-#             nms.append(aircraft_name)
-
-#     scs = list(np.array(scs) -1)
-#     dct = {scs[i]: nms[i] for i in range(len(scs))}
-
-#     return dct
-
 def filter_by_mask(ls, mask):
     return np.array(ls)[mask].tolist()
 

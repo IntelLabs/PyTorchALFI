@@ -721,11 +721,6 @@ def obj_det_analysis_func(folder_path, folder_num=0, typ='ranger'):
 
 def obj_det_analysis(exp_folder_paths, resil_methods, num_threads=1):
 
-    # exp_folder_paths = [
-    #                 "/home/qutub/PhD/git_repos/intel_github_repos/personal.squtub.pytorchalfi/result_files/VPU_test/frcnn_torchvision_1_trials/neurons_injs/per_batch/objDet_20221010-144425_1_faults_[1]_bits/coco"
-    #                 ]
-    # resil_methods = ["no_resil"]*len(exp_folder_paths)
-
     try:
         executor = concurrent.futures.ProcessPoolExecutor(num_threads)
         futures = [executor.submit(obj_det_analysis_func, exp_folder_path, exp_folder_num, resil_methods[exp_folder_num])

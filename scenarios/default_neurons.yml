@@ -12,7 +12,7 @@ print: False
 # optional
 # uncomment below line
 fi_logfile: fault_rates_alexnet_1
-layer_boundsfile: /home/qutub/PhD/git_repos/intel_git_repos/ranger/bounds/yolov3_bounds_kitti_train20p_act_v2.txt
+layer_boundsfile: -1
 # read_from_file: absolute path to logfile to read previously stored FI scenario from.
 # also see fi-logfile
 # optional

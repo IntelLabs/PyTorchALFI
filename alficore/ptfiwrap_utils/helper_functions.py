@@ -72,9 +72,6 @@ def prepare_imageNet_data():
         class_label = class_idx[list(class_idx.keys())[i]][1]
         label_dict[class_mapping] = class_label
 
-    # json_read = "/home/qutub/PhD/git_repos/intel_gitlab_repos/example_images/imagenet/imagenet_class_index.json"
-    # class_idx = json.load(open(json_read))
-
     with open(imagenet_mapping) as f:
         mapping = [line.strip() for line in f.readlines()]
 

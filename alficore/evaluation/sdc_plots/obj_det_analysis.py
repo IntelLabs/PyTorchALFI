@@ -696,8 +696,7 @@ def get_fault_path(folder_path, typ='no_resil'):
     else:
         return filelist[0]
 
-    
-def obj_det_analysis(folder_path, folder_num=0, typ='ranger'):
+def obj_det_analysis_func(folder_path, folder_num=0, typ='ranger'):
     faults_path = get_fault_path(folder_path, typ)
     flt_type = "neurons" if "neurons" in folder_path else "weights" if "weights" in folder_path else None
     suffix = '_ranger' #'_avg' # '_ranger'
@@ -720,26 +719,22 @@ def obj_det_analysis(folder_path, folder_num=0, typ='ranger'):
 
     print("completed analysis for folder {} :{}".format(folder_num, folder_path))
 
-def main(argv):
+def obj_det_analysis(exp_folder_paths, resil_methods, num_threads=1):
 
-    """
-    ## paper results
-    """
-    folder_paths = [
-                    "/home/qutub/PhD/git_repos/intel_github_repos/personal.squtub.pytorchalfi/result_files/VPU_test/frcnn_torchvision_1_trials/neurons_injs/per_batch/objDet_20221010-144425_1_faults_[1]_bits/coco"
-                    ]
-    resil_methods = ["no_resil"]*len(folder_paths)
+    # exp_folder_paths = [
+    #                 "/home/qutub/PhD/git_repos/intel_github_repos/personal.squtub.pytorchalfi/result_files/VPU_test/frcnn_torchvision_1_trials/neurons_injs/per_batch/objDet_20221010-144425_1_faults_[1]_bits/coco"
+    #                 ]
+    # resil_methods = ["no_resil"]*len(exp_folder_paths)
 
-    """
-    ## experiment on clipper and DUE correction
-    """
     try:
-        executor = concurrent.futures.ProcessPoolExecutor(1)
-        futures = [executor.submit(obj_det_analysis, folder_path, folder_num, resil_methods[folder_num])
-                for folder_num, folder_path in enumerate(folder_paths)]
+        executor = concurrent.futures.ProcessPoolExecutor(num_threads)
+        futures = [executor.submit(obj_det_analysis_func, exp_folder_path, exp_folder_num, resil_methods[exp_folder_num])
+                for exp_folder_num, exp_folder_path in enumerate(exp_folder_paths)]
         concurrent.futures.wait(futures)
+    except Exception as e:
+        print(e)
     except KeyboardInterrupt:
         quit = True
 
-if __name__ == "__main__":
-    main(sys.argv)
+# if __name__ == "__main__":
+#     obj_det_analysis(sys.argv)

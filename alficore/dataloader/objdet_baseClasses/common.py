@@ -356,7 +356,7 @@ def read_image(file_name, format=None):
         # work around this bug: https://github.com/python-pillow/Pillow/issues/3973
         return convert_PIL_to_numpy(image, format)
 
-def pytorchFI_objDet_inputcheck(inputs):
+def pytorchFI_objDet_inputcheck(inputs, dummy=False):
     _input_dict_keys = ['image', 'image_id']
     batch_size = len(inputs)
     try:
@@ -365,8 +365,8 @@ def pytorchFI_objDet_inputcheck(inputs):
         assert all(_keys in input_sample_dict_keys for _keys in _input_dict_keys)
         return inputs
     except AssertionError:
-        logging.warning("Input to the model doesnt meet the requirement of pytorchFI object detection component")
-        # inputs = [{'image': inputs, 'image_id': 0}, {'image': inputs, 'image_id': 1}]
+        if dummy == False:
+            logging.warning("Input to the model doesnt meet the requirement of pytorchFI object detection component")
         inputs = [{'image': inputs[_bs], 'image_id': _bs} for _bs in range(batch_size)]
         return inputs
 

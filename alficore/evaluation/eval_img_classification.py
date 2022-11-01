@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 from sdc_plots.obj_det_analysis import get_fault_path, read_csv
 from sdc_plots.obj_det_evaluate_jsons import read_fault_file, load_json_indiv
+import argparse
 
 
 def add_data(toplot_dict, json_path):
@@ -153,27 +154,27 @@ def get_label_info(filename):
     f.close()
     return bounds
 
-def get_class_mapping():
-    info = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/images_variant_test.txt')
-    info_fam = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/images_manufacturer_test.txt')
-    info_scores = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/test.txt')
+# def get_class_mapping():
+#     info = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/images_variant_test.txt')
+#     info_fam = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/images_manufacturer_test.txt')
+#     info_scores = get_label_info('/home/fgeissle/aircrafts/MMAL-Net/datasets/FGVC-aircraft/data/test.txt')
 
-    scs = []
-    nms = []
-    for i in range(len(info)):
-        var = info[i][0][8:]
-        man = info_fam[i][0][8:]
-        aircraft_name = (man + " " + var, info[i][0][:7])[0]
+#     scs = []
+#     nms = []
+#     for i in range(len(info)):
+#         var = info[i][0][8:]
+#         man = info_fam[i][0][8:]
+#         aircraft_name = (man + " " + var, info[i][0][:7])[0]
 
-        score = int(info_scores[i][0][12:])
-        if score not in scs:
-            scs.append(score)
-            nms.append(aircraft_name)
+#         score = int(info_scores[i][0][12:])
+#         if score not in scs:
+#             scs.append(score)
+#             nms.append(aircraft_name)
 
-    scs = list(np.array(scs) -1)
-    dct = {scs[i]: nms[i] for i in range(len(scs))}
+#     scs = list(np.array(scs) -1)
+#     dct = {scs[i]: nms[i] for i in range(len(scs))}
 
-    return dct
+#     return dct
 
 def filter_by_mask(ls, mask):
     return np.array(ls)[mask].tolist()
@@ -206,10 +207,10 @@ def extract_data(folder):
     fault_file_noranger = get_fault_path(folder)
     if fault_file_noranger is None or fault_file_noranger == []:
         print('No fault file found:')
-        return
+        ff_noranger = None
     else:
         print('Loading from fault file:', fault_file_noranger)
-    ff_noranger = read_fault_file(fault_file_noranger) #tests
+        ff_noranger = read_fault_file(fault_file_noranger) #tests
     
     # Ranger detection file ---------------
     # det_path = list(Path(folder).glob('**/*_detections.bin') ) #dets without faults?
@@ -222,32 +223,39 @@ def extract_data(folder):
     orig_path = list(Path(folder).glob('**/*_golden.csv') ) 
     orig_res = read_csv(str(orig_path[0]))
 
-    corr_path = list(Path(folder).glob('**/*_corr.csv') ) 
-    corr_res = read_csv(str(corr_path[0]))
+    corr_path = list(Path(folder).glob('**/*_corr.csv') )
+    if len(corr_path) > 0:
+        corr_res = read_csv(str(corr_path[0]))
+    else:
+        corr_res = None
 
     return ff_noranger, orig_res, corr_res
 
 def extract_predictions(orig_res, corr_res):
-    # Extract fault paths --------------------------------------------------
-    assert get_col_nr_x(orig_res, 0) == get_col_nr_x(corr_res, 0)
-    fpths = get_col_nr_x(corr_res, 0)
-    fpths = [int(fpths[x]) for x in range(1,len(fpths))]
-
+    
     # orig ----------------------
     gnd, orig, orig_resil = get_gnd_orig(orig_res)
+    corr, corr_resil, fpths = None, None, None
 
-    # corr ---------------------
-    corr_ind = corr_res[0].index('corr output index - top5')
-    corr = get_col_nr_x(corr_res, corr_ind)
-    corr = [list(map(int,corr[x][1:-1].split())) for x in range(1,len(corr))]
+    if corr_res is not None:
+        # Extract fault paths --------------------------------------------------
+        assert get_col_nr_x(orig_res, 0) == get_col_nr_x(corr_res, 0)
+        fpths = get_col_nr_x(corr_res, 0)
+        fpths = [int(fpths[x]) for x in range(1,len(fpths))]
 
-    try:
-        corr_resil_ind = corr_res[0].index('resil corr output index - top5')
-        corr_resil = get_col_nr_x(corr_res, corr_resil_ind)
-        corr_resil = np.array([corr_resil[x]=='True' for x in range(1,len(corr_resil))])
-    except:
-        print('resil corr output column not found')
-        corr_resil = None
+
+        # corr ---------------------
+        corr_ind = corr_res[0].index('corr output index - top5')
+        corr = get_col_nr_x(corr_res, corr_ind)
+        corr = [list(map(int,corr[x][1:-1].split())) for x in range(1,len(corr))]
+
+        try:
+            corr_resil_ind = corr_res[0].index('resil corr output index - top5')
+            corr_resil = get_col_nr_x(corr_res, corr_resil_ind)
+            corr_resil = np.array([corr_resil[x]=='True' for x in range(1,len(corr_resil))])
+        except:
+            print('resil corr output column not found')
+            corr_resil = None
 
     return gnd, orig, orig_resil, corr, corr_resil, fpths
 
@@ -270,16 +278,15 @@ def get_due_masks(corr_res):
 
     return due_corr, due_corr_resil
 
-
+def parse_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('res_dir', type=str, help='path to result files')
+    opt = parser.parse_args()
+    return opt
 
 def main(argv):
-
-    #######################################################
-    
-    folder = '/home/fgeissle/hdfit_pytorch/pytorch/personal.squtub.pytorchalfi/result_files/LeNet_orig_2_trials/_injs/per_batch/objDet_20221014-124446_0_faults_[0,8]_bits/mnist/val'
-    #######################################################
-
-
+    opt = parse_opt()
+    folder = opt.res_dir
 
     fault_file, orig_result, corr_result = extract_data(folder)
 

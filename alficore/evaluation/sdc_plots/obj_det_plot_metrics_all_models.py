@@ -176,7 +176,7 @@ def add_data(toplot_dict, ax_leg, model_dict):
 
     return toplot_dict, ax_leg
 
-def plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, legend_text, yname, sv_name, cols = None, scale_to_perc = None):
+def plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, legend_text, yname, sv_name, ax_leg, cols = None, scale_to_perc = None):
 
     ind = np.arange(len(mns_orig))  # the x locations for the groups
     fig, ax = plt.subplots()
@@ -1010,7 +1010,7 @@ toplot_dict_template = {'sdc': {'orig_mns': [], 'orig_errs': [], 'corr_mns': [],
             'resil_orig_mns': [], 'resil_orig_errs': [], 'resil_corr_mns': [], 'resil_corr_errs': []}, \
     'tpfpfn': {'orig': {'tp': [], 'fp': [], 'fp_bbox': [], 'fp_class':[], 'fp_bbox_class':[], 'fn': []}, 'corr': {'tp': [], 'fp': [], 'fp_bbox': [], 'fp_class':[], 'fp_bbox_class':[], 'fn': [], 'bpos': []},
               'resil_orig': {'tp': [], 'fp': [], 'fp_bbox': [], 'fp_class':[], 'fp_bbox_class':[], 'fn': []}, 'resil_corr': {'tp': [], 'fp': [], 'fp_bbox': [], 'fp_class':[], 'fp_bbox_class':[], 'fn': [], 'bpos': []}}}
-ax_leg_template = []
+
 
 
 
@@ -1029,190 +1029,182 @@ ax_leg_n_w = []
 """
 ## experiment on clipper and DUE correction.
 """
+def obj_det_plot_metrics(exp_folder_paths):
 
+    ax_leg_template = []
+    paths = exp_folder_paths
+    flts_valid = {'neurons':False, 'weights':False}
+    for flt_type in flts:
+        toplot_dict = deepcopy(toplot_dict_template)
+        ax_leg = deepcopy(ax_leg_template)
 
-paths = {"frcnn+CoCo":{
-                    "neurons":{"path" :"/home/qutub/PhD/git_repos/intel_github_repos/personal.squtub.pytorchalfi/result_files/VPU_test/frcnn_torchvision_1_trials/neurons_injs/per_batch/objDet_20221010-144425_1_faults_[1]_bits/coco/sdc_eval", "typ":"no_resil"},
-                    # "weights":{"path" :"/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/weights_injs/per_batch/objDet_20220213-202846_1_faults_[0_32]_bits/kitti/val/sdc_eval", "typ":"no_resil"}
-                    },
-        #             },
-        #  "Yolo+Coco":{
-        #             "neurons":{"path" :"path", "typ":"ranger"}, 
-        #             "weights":{"path" :"path", "typ":"no_resil"}
-        #             }
-                    }
-flts_valid = {'neurons':False, 'weights':False}
-for flt_type in flts:
-    toplot_dict = deepcopy(toplot_dict_template)
-    ax_leg = deepcopy(ax_leg_template)
+        plot=False
+        for key in paths.keys():
+            path = paths[key]
+            model_dict = {"flt_type": flt_type, "suffix": suffix, 'bits': 1}
+            model_dict['label_name'] = key
+            try:
+                model_dict["path"] = os.path.join(path[flt_type]['path'], "sdc_eval")
+                model_dict["typ"] = path[flt_type]["typ"]
+                toplot_dict, ax_leg = add_data(toplot_dict, ax_leg, model_dict)
+                plot=True
+            except:
+                print("parsing of data failed for combination {}: {}".format(flt_type, model_dict))
 
-    plot=False
-    for key in paths.keys():
-        path = paths[key]
-        model_dict = {"flt_type": flt_type, "suffix": suffix, 'bits': 1}
-        model_dict['label_name'] = key
-        try:
-            model_dict["path"] = path[flt_type]['path']
-            model_dict["typ"] = path[flt_type]["typ"]
-            toplot_dict, ax_leg = add_data(toplot_dict, ax_leg, model_dict)
-            plot=True
-        except:
-            print("parsing of data failed for combination {}: {}".format(flt_type, model_dict))
+        flts_valid[flt_type] = plot
+        if plot:
+            toplot_dict_n_w.append(toplot_dict)
+            ax_leg_n_w.append(ax_leg)
 
-    flts_valid[flt_type] = plot
-    if plot:
-        toplot_dict_n_w.append(toplot_dict)
-        ax_leg_n_w.append(ax_leg)
-
-        """
-        CORR PLOTS
-        """
-        # Plot the images with all models: ----------------------------------------------------------------
-        # mAP: 
-        sv_name = "plots/evaluation/corr_metrics/" + "map_all_" + flt_type + "_corr.png"
-        yname = "mAP"
-        leg = ['orig', 'corr']
-
-        mns_orig, errs_orig = toplot_dict['map']['orig_mns'], toplot_dict['map']['orig_errs']
-        mns_corr, errs_corr = toplot_dict['map']['corr_mns'], toplot_dict['map']['corr_errs']
-        plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name)
-
-        # AP50:
-        sv_name = "plots/evaluation/corr_metrics/" + "ap50_all_" + flt_type + "_corr.png"
-        yname = "AP50"
-        leg = ['orig', 'corr']
-
-        mns_orig, errs_orig = toplot_dict['ap50']['orig_mns'], toplot_dict['ap50']['orig_errs']
-        mns_corr, errs_corr = toplot_dict['ap50']['corr_mns'], toplot_dict['ap50']['corr_errs']
-        plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name)
-
-        # SDC rates:
-        sv_name = "plots/evaluation/corr_metrics/" + "sdc_all_" + flt_type + "_corr.png"
-        yname = "Error rates (%)"
-        leg = ['$IVMOD_{corr\_sdc}$', '$IVMOD_{corr\_due}}$']
-
-        mns_orig, errs_orig = toplot_dict['sdc']['corr_mns'], toplot_dict['sdc']['corr_errs']
-        mns_corr, errs_corr = toplot_dict['due']['corr_mns'], toplot_dict['due']['corr_errs']
-        plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, cols=['indianred', 'lightgreen'], scale_to_perc=True)
-
-        """
-        ## RESIL Plots##
-        """
-        if suffix != 'no_resil':
+            """
+            CORR PLOTS
+            """
             # Plot the images with all models: ----------------------------------------------------------------
             # mAP: 
-            sv_name = "plots/evaluation/resil_metrics/" + "map_all_" + flt_type + "_resil.png"
+            sv_name = "plots/evaluation/corr_metrics/" + "map_all_" + flt_type + "_corr.png"
             yname = "mAP"
-            leg = ['resil_orig', 'resil_corr']
+            leg = ['orig', 'corr']
 
-            mns_orig, errs_orig = toplot_dict['map']['resil_orig_mns'], toplot_dict['map']['resil_orig_errs']
-            mns_corr, errs_corr = toplot_dict['map']['resil_corr_mns'], toplot_dict['map']['resil_corr_errs']
-            plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name)
+            mns_orig, errs_orig = toplot_dict['map']['orig_mns'], toplot_dict['map']['orig_errs']
+            mns_corr, errs_corr = toplot_dict['map']['corr_mns'], toplot_dict['map']['corr_errs']
+            plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, ax_leg)
 
             # AP50:
-            sv_name = "plots/evaluation/resil_metrics/" + "ap50_all_" + flt_type + "_resil.png"
+            sv_name = "plots/evaluation/corr_metrics/" + "ap50_all_" + flt_type + "_corr.png"
             yname = "AP50"
-            leg = ['resil_orig', 'resil_corr']
+            leg = ['orig', 'corr']
 
-            mns_orig, errs_orig = toplot_dict['ap50']['resil_orig_mns'], toplot_dict['ap50']['resil_orig_errs']
-            mns_corr, errs_corr = toplot_dict['ap50']['resil_corr_mns'], toplot_dict['ap50']['resil_corr_errs']
-            plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name)
+            mns_orig, errs_orig = toplot_dict['ap50']['orig_mns'], toplot_dict['ap50']['orig_errs']
+            mns_corr, errs_corr = toplot_dict['ap50']['corr_mns'], toplot_dict['ap50']['corr_errs']
+            plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, ax_leg)
 
             # SDC rates:
-            sv_name = "plots/evaluation/resil_metrics/" + "sdc_all_" + flt_type + suffix + "_resil.png"
+            sv_name = "plots/evaluation/corr_metrics/" + "sdc_all_" + flt_type + "_corr.png"
             yname = "Error rates (%)"
-            leg = ['$IVMOD_{resil\_sdc}$', '$IVMOD_{resil\_due}$']
+            leg = ['$IVMOD_{corr\_sdc}$', '$IVMOD_{corr\_due}}$']
 
-            mns_orig, errs_orig = toplot_dict['sdc']['resil_corr_mns'], toplot_dict['sdc']['resil_corr_errs']
-            mns_corr, errs_corr = toplot_dict['due']['resil_corr_mns'], toplot_dict['due']['resil_corr_errs']
-            plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, cols=['indianred', 'lightgreen'], scale_to_perc=True)
+            mns_orig, errs_orig = toplot_dict['sdc']['corr_mns'], toplot_dict['sdc']['corr_errs']
+            mns_corr, errs_corr = toplot_dict['due']['corr_mns'], toplot_dict['due']['corr_errs']
+            plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, ax_leg, cols=['indianred', 'lightgreen'], scale_to_perc=True)
+
+            """
+            ## RESIL Plots##
+            """
+            if suffix != 'no_resil':
+                # Plot the images with all models: ----------------------------------------------------------------
+                # mAP: 
+                sv_name = "plots/evaluation/resil_metrics/" + "map_all_" + flt_type + "_resil.png"
+                yname = "mAP"
+                leg = ['resil_orig', 'resil_corr']
+
+                mns_orig, errs_orig = toplot_dict['map']['resil_orig_mns'], toplot_dict['map']['resil_orig_errs']
+                mns_corr, errs_corr = toplot_dict['map']['resil_corr_mns'], toplot_dict['map']['resil_corr_errs']
+                plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, ax_leg)
+
+                # AP50:
+                sv_name = "plots/evaluation/resil_metrics/" + "ap50_all_" + flt_type + "_resil.png"
+                yname = "AP50"
+                leg = ['resil_orig', 'resil_corr']
+
+                mns_orig, errs_orig = toplot_dict['ap50']['resil_orig_mns'], toplot_dict['ap50']['resil_orig_errs']
+                mns_corr, errs_corr = toplot_dict['ap50']['resil_corr_mns'], toplot_dict['ap50']['resil_corr_errs']
+                plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, ax_leg)
+
+                # SDC rates:
+                sv_name = "plots/evaluation/resil_metrics/" + "sdc_all_" + flt_type + suffix + "_resil.png"
+                yname = "Error rates (%)"
+                leg = ['$IVMOD_{resil\_sdc}$', '$IVMOD_{resil\_due}$']
+
+                mns_orig, errs_orig = toplot_dict['sdc']['resil_corr_mns'], toplot_dict['sdc']['resil_corr_errs']
+                mns_corr, errs_corr = toplot_dict['due']['resil_corr_mns'], toplot_dict['due']['resil_corr_errs']
+                plot_metric(mns_orig, errs_orig, mns_corr, errs_corr, leg, yname, sv_name, ax_leg, cols=['indianred', 'lightgreen'], scale_to_perc=True)
 
 
-# Verify that there are more faults in weights:
-# len(toplot_dict_n_w[0]['tpfpfn']['corr']['tp'][1]) #length of tps (neurons)
-# len(toplot_dict_n_w[1]['tpfpfn']['corr']['tp'][1]) #length of tps (weights)
+    # Verify that there are more faults in weights:
+    # len(toplot_dict_n_w[0]['tpfpfn']['corr']['tp'][1]) #length of tps (neurons)
+    # len(toplot_dict_n_w[1]['tpfpfn']['corr']['tp'][1]) #length of tps (weights)
 
 
-"""
-## CORR Plots##
-"""
-# TP FP FN vs bpos
-if flts_valid['neurons']:
-    n_w = 'neurons'
-    fpfn = 'fp'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all' + '_' + n_w + ".png"
-    plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-    fpfn = 'fn'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all'+ '_' + n_w + ".png"
-    plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-    # TP FP FN vs bpos histogram
-    fpfn = 'fp'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all'  + '_' + n_w + ".png"
-    plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-    fpfn = 'fn'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + '_' + n_w + ".png"
-    plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-if flts_valid['weights']:
-    n_w = 'weights'
-    fpfn = 'fp'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all' + '_' + n_w + ".png"
-    plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-    fpfn = 'fn'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all'+ '_' + n_w + ".png"
-    plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-    fpfn = 'fp'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + '_' + n_w + ".png"
-    plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-    fpfn = 'fn'
-    sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + '_' + n_w + ".png"
-    plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
-
-"""
-## RESIL Plots##
-"""
-if suffix != 'no_resil':
-    if flts_valid['neurons']:
+    """
+    ## CORR Plots##
+    """
     # TP FP FN vs bpos
+    if flts_valid['neurons']:
         n_w = 'neurons'
         fpfn = 'fp'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all' + '_' + n_w + ".png"
+        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
 
         fpfn = 'fn'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all'+ '_' + n_w + ".png"
+        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
 
+        # TP FP FN vs bpos histogram
         fpfn = 'fp'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all'  + '_' + n_w + ".png"
+        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
 
         fpfn = 'fn'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
-
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + '_' + n_w + ".png"
+        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
 
     if flts_valid['weights']:
-        # TP FP FN vs bpos histogram
         n_w = 'weights'
         fpfn = 'fp'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all' + '_' + n_w + ".png"
+        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
 
         fpfn = 'fn'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
-        
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_diff_bpos_" + 'all'+ '_' + n_w + ".png"
+        plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
+
         fpfn = 'fp'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + '_' + n_w + ".png"
+        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
 
         fpfn = 'fn'
-        sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
-        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+        sv_name = "plots/evaluation/corr_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + '_' + n_w + ".png"
+        plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w)
+
+    """
+    ## RESIL Plots##
+    """
+    if suffix != 'no_resil':
+        if flts_valid['neurons']:
+        # TP FP FN vs bpos
+            n_w = 'neurons'
+            fpfn = 'fp'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+
+            fpfn = 'fn'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+
+            fpfn = 'fp'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+
+            fpfn = 'fn'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+
+
+        if flts_valid['weights']:
+            # TP FP FN vs bpos histogram
+            n_w = 'weights'
+            fpfn = 'fp'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+
+            fpfn = 'fn'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_avg_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+            
+            fpfn = 'fp'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)
+
+            fpfn = 'fn'
+            sv_name = "plots/evaluation/resil_metrics/" + fpfn + "_hist_diff_bpos_" + 'all' + suffix + '_' + n_w + "_resil.png"
+            plot_hist_tp_bpos(toplot_dict_n_w, ax_leg_n_w, sv_name, plothow = fpfn, n_w=n_w, typ=suffix)

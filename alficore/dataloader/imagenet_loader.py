@@ -41,7 +41,8 @@ transform = transforms.Compose([            #[1]
 
 def Imagenet_class_distribution():
     ## under development
-    json_read = "/home/qutub/PhD/data/datasets/imagenet/imagenet_class_index.json"
+    json_read = "/nwstore/datasets/ImageNet/imagenet_class_index.json"
+    # json_read = "/home/qutub/PhD/data/datasets/imagenet/imagenet_class_index.json"
     class_idx = json.load(open(json_read))
     Label_dict = {}
     synset_id = {}
@@ -107,7 +108,7 @@ class DatasetFolder(VisionDataset):
             # root = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/Data/CLS-LOC/train"
             self.datasplit = 'train'
         elif root == 'val':
-            # root = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/sort"
+            # root = "/nwstore/datasets/ImageNet/ILSVRC/sort"
             root = "/nwstore/datasets/ImageNet/ILSVRC/random20classes_FI"
             # root = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/random20classes_FI"
             self.datasplit = 'val'
@@ -252,103 +253,6 @@ def prep_val_imagenet():
     
         os.rename(file, VAL_DATA_PATH + class_name + "/" + file.split("/")[-1])
 
-    ## for validation dataset
-    # import ntpath
-    # import glob
-    # import json
-    # import xml.etree.ElementTree as ET
-    # import shutil
-    # VAL_ORI_DATA_PATH = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/Data/CLS-LOC/val/*.JPEG"
-    # VAL_GROUND_TRUTH = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/Annotations/CLS-LOC/val"
-    # VAL_DATA_PATH = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/sort/"
-    # # VAL_DATA_PATH = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/random20classes_FI"
-    # val_data_files = glob.glob(VAL_ORI_DATA_PATH)
-    # json_read = "/home/qutub/PhD/data/datasets/imagenet/imagenet_class_index.json"
-    # class_idx = json.load(open(json_read))
-    # Label_dict = {}
-    # print('works')
-    # for i in range(len(list(class_idx.keys()))):
-    #     class_mapping = class_idx[list(class_idx.keys())[i]][0]
-    #     class_label = class_idx[list(class_idx.keys())[i]][1]
-    #     Label_dict[class_mapping] = i, class_label
-
-
-    # for file in val_data_files:
-    #     file_basename = os.path.splitext(os.path.basename(file))[0]
-    #     class_name = class_mapping[file_basename][1]
-
-    #     if not os.path.isdir(VAL_DATA_PATH + class_name):
-    #         os.mkdir(VAL_DATA_PATH + class_name)
-
-    #     # os.rename(file, VAL_DATA_PATH + class_name + "/" + file.split("/")[-1])    
-    #     shutil.copyfile(file, VAL_DATA_PATH + class_name + "/" + file.split("/")[-1])
-
-    # import ntpath
-    # import glob
-    # import json
-    # import xml.etree.ElementTree as ET
-    # import shutil
-    # import xml.etree.ElementTree as ET
-    
-    # import shutil
-    # source = "/nwstore/sayanta/random20classes_FI"
-    # destination = "/nwstore/sayanta/random20classes_FI_test"
-
-    # os.makedirs(destination, exist_ok=True)
-    # # code to move the files from sub-folder to main folder.
-    # folders = os.listdir(source)
-    # for folder in folders:
-    #     _folder = os.path.join(source, folder)
-    #     list_folder = os.listdir(_folder)
-    #     for _file in list_folder:
-    #         file_name = os.path.join(_folder, _file)
-    #         shutil.copy(file_name, destination )
-    # print("Files Moved")
-    
-    # def extract_synset_id(file):
-    #     synset_id = []
-    #     xmltree = ET.parse(file)
-    #     objects = xmltree.findall("object")
-    #     for object_iter in objects:
-    #         _synset_id = object_iter.find("name")
-    #         synset_id.append(_synset_id.text)
-    #     return synset_id[0]
-        
-    # VAL_ORI_DATA_PATH = "/nwstore/datasets/ImageNet/ILSVRC/random20classes_club/*.JPEG"
-    # VAL_GROUND_TRUTH = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/Annotations/CLS-LOC/val"
-    # # VAL_DATA_PATH = "/media/qutub/nwstore/datasets/ImageNet/ILSVRC/random20classes_FI"
-    # val_data_files = glob.glob(VAL_ORI_DATA_PATH)
-    # json_read = "/nwstore/datasets/ImageNet/imagenet_class_index.json"
-    # class_idx = json.load(open(json_read))
-    # Label_dict = {}
-
-
-    # annotations ="/nwstore/datasets/ImageNet/ILSVRC/Annotations/CLS-LOC/val/"
-
-    # for i in range(len(list(class_idx.keys()))):
-    #     class_mapping = class_idx[list(class_idx.keys())[i]][0]
-    #     class_label = class_idx[list(class_idx.keys())[i]][1]
-    #     Label_dict[class_mapping] = i, class_label
-
-    # val_data_ann = {}
-    # for file in val_data_files:
-    #     file_basename = os.path.splitext(os.path.basename(file))[0]
-    #     ann_file = os.path.join(annotations, file_basename + '.xml')
-        
-    #     synset_id = extract_synset_id(ann_file)
-
-    #     val_data_ann[file_basename] = synset_id, Label_dict[synset_id][0], Label_dict[synset_id][1]
-
-    # file_path = "/nwstore/datasets/ImageNet/ILSVRC/random20classes_club_labels.txt"
-    # with open(file_path, 'w') as fp:
-    #     json.dump(val_data_ann, fp)
-
-    # file_path = "/nwstore/datasets/ImageNet/ILSVRC/random20classes_club_label_ids.txt"
-    # val_data_ann_text = ['{} {}'.format(key, val_data_ann[key][1]) for key in val_data_ann.keys()]
-    # with open(file_path, 'w') as f:
-    #     for line in val_data_ann_text:
-    #         f.write(line)
-    #         f.write('\n')
 
 class ImageFolderWithPaths(ImageFolder):
     """Custom dataset that includes image file paths. Extends
@@ -410,6 +314,7 @@ class Imagenet_dataloader():
         self.dl_attr.dl_device  = self.device
         if isinstance(self.dl_attr.dl_sampleN, float) and self.dl_attr.dl_sampleN>1:
             self.dl_attr.dl_sampleN = int(self.dl_attr.dl_sampleN)
+        # self.transform = transforms.Compose([transforms.Resize((100, 100)), transforms.ToTensor()])
 
         ## TODO self.classes and self.class_idx is probably not the class label names and idx. Need to confirm. This may be is extracted
         ## and stored in Label_dict
@@ -419,7 +324,7 @@ class Imagenet_dataloader():
             # class_mapping =  class_idx[list(class_idx.keys())[i]][0]
             class_label = self.class_idx[list(self.class_idx.keys())[i]][1]
             Label_dict[class_label] = i
-        self.dataset = ImageFolderWithPaths(root=self.dl_attr.dl_dataset_type, transform=self.dl_attr.dl_transform)
+        self.dataset = ImageFolderWithPaths(root=self.dl_attr.dl_dataset_type, transform=transform)
         self.datasetfp = self.dataset.get_datasetfp()
 
         if self.dl_attr.dl_sampleN <= 1:

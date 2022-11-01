@@ -1,8 +1,6 @@
 # Copyright 2022 Intel Corporation.
 # SPDX-License-Identifier: MIT
 
-
-
 import logging.config
 import os
 import pickle

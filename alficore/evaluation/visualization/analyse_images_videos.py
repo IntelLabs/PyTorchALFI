@@ -49,8 +49,8 @@ img_ids = [80, 100, 127, 143, 647]
 
 epochs = list(range(trails))
 
-gt_json_file = '/home/qutub/PhD/git_repos/intel_github_repos/personal.squtub.pytorchalfi/result_files/output_20221007-122944_yolo_kitti/kitti/coco_format.json'
-dt_json_file = '/home/qutub/PhD/git_repos/intel_github_repos/personal.squtub.pytorchalfi/result_files/output_20221007-122944_yolo_kitti/kitti/orig_model/epochs/0/coco_instances_results_0_epoch.json'
+gt_json_file = '../pytorchalfi/result_files/output_20221007-122944_yolo_kitti/kitti/coco_format.json'
+dt_json_file = '../pytorchalfi/result_files/output_20221007-122944_yolo_kitti/kitti/orig_model/epochs/0/coco_instances_results_0_epoch.json'
 
 gt_json_data = read_json(gt_json_file)
 thing_classes = [a['name'] for a in gt_json_data['categories']]

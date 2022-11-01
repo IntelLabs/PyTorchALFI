@@ -42,7 +42,6 @@ transform = transforms.Compose([            #[1]
 def Imagenet_class_distribution():
     ## under development
     json_read = "/nwstore/datasets/ImageNet/imagenet_class_index.json"
-    # json_read = "/home/qutub/PhD/data/datasets/imagenet/imagenet_class_index.json"
     class_idx = json.load(open(json_read))
     Label_dict = {}
     synset_id = {}
@@ -216,9 +215,8 @@ class ImageFolder(DatasetFolder):
 
 def prep_val_imagenet():
     _, class_idx = imagenet_idx2label() # _ = idx2label
-    imagenet_groundtruth = "/home/qutub/PhD/data/datasets/imagenet/ILSVRC2012_validation_ground_truth.txt"
+    # imagenet_groundtruth = "data/datasets/imagenet/ILSVRC2012_validation_ground_truth.txt"
     imagenet_mapping = "/nwstore/datasets/imagenet/ILSVRC2012_mapping.txt"
-    imagenet_labels = "/home/qutub/PhD/data/datasets/imagenet/labels.txt"
 
     label_dict = {}
     Label_dict = {}

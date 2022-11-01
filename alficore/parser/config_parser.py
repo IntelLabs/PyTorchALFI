@@ -12,8 +12,6 @@ class ConfigParser:
         self.print = False
         self.fi_logfile = "-1"
         self.read_from_file = "-1"
-        ## TODO: Remove this parameter as inj policy suits better
-        ## Consult Ralf once
         self.dataset_size = -1
         self.num_runs = -1
         self.max_faults_per_image = -1

@@ -300,12 +300,12 @@ def main(argv):
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dl-json', type=str, default='/COCO/coco2017/annotations/instances_val2017.json', help='path to datasets ground truth json file')
-    parser.add_argument('--dl-img-root', type=str, default='/COCO/coco2017/val2017', help='path to datasets images')
+    parser.add_argument('--dl-json', type=str, default='/nwstore/datasets/COCO/coco2017/annotations/instances_val2017.json', help='path to datasets ground truth json file')
+    parser.add_argument('--dl-img-root', type=str, default='/nwstore/datasets/COCO/coco2017/val2017', help='path to datasets images')
     parser.add_argument('--dl-ds-name', type=str, default='CoCo', help='dataset short name')
     parser.add_argument('--config-file', type=str, default='default.yml', help='name of default yml file - inside scenarios folder')
     parser.add_argument('--fault-files', type=str, default=None, help='directory of already existing fault files to repeat existing experiment')
-    parser.add_argument('--dl-batchsize', type=int, default=1, help='dataloader batch size')
+    parser.add_argument('--dl-batchsize', type=int, default=10, help='dataloader batch size')
     parser.add_argument('--sample-size', type=int, default=100, help='dataloader sample size')
     parser.add_argument('--num-workers', type=int, default=1, help='dataloader number of workers')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')

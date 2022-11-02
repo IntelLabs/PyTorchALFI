@@ -442,7 +442,7 @@ class TestErrorModels_ImgClass:
 
         return orig_model_entropy, orig_perct, orig_index
 
-    def _run_inference_orig_model(self):
+    def __run_inference_orig_model(self):
         self.ORIG_MODEL.eval()
         start = time.time()
         orig_output = self.ORIG_MODEL(self.dataloader.images)
@@ -450,17 +450,15 @@ class TestErrorModels_ImgClass:
         # len(orig_output)
         return orig_output
 
-    def _run_inference_corr_model(self):
-        start = time.time()   
-        # if self.corr_img:
-        #     self.CORR_MODEL = self.ORIG_MODEL
+    def __run_inference_corr_model(self):
+        start = time.time()
         self.CORR_MODEL.eval()
         corr_output, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial')
         if self.inf_nan_monitoring:
-            self.nan_flag_image_corr_model = nan_dict_corr['flag'] #Flag true or false per image depending if nan found at any layer
-            self.nan_inf_flag_image_corr_model = [nan_dict_corr['flag'][h] or inf_dict_corr['flag'][h] for h in range(len(inf_dict_corr['flag']))]
-            self.nan_inf_overall_layers_image_corr_model = [np.unique(nan_dict_corr['overall'][i] + inf_dict_corr['overall'][i]).tolist() for i in range(len(nan_dict_corr['overall']))]
-            self.nan_inf_first_occurrence_image_corr_model = [i for i in nan_dict_corr['first_occur_compare']]
+            self.nan_flag_image_corr_model = [[a for a in nandictcorr['flag']] for nandictcorr in  nan_dict_corr] #Flag true or false per image depending if nan found at any layer
+            self.nan_inf_flag_image_corr_model = [[nan_dict_corr[idx]['flag'][h] or infdictcorr['flag'][h] for h in range(len(infdictcorr['flag']))] for idx, infdictcorr in enumerate(inf_dict_corr)]
+            self.nan_inf_overall_layers_image_corr_model = [[np.unique(nandictcorr['overall'][i] + inf_dict_corr[idx]['overall'][i]).tolist() for i in range(len(nandictcorr['overall']))] for idx, nandictcorr in enumerate(nan_dict_corr)]
+            self.nan_inf_first_occurrence_image_corr_model = [[i for i in nandictcorr['first_occur_compare']] for nandictcorr in nan_dict_corr]
         if self.ranger_detector:
             self.corr_ranger_actvns.extend(detected_activations)
         if self.quant_extr:
@@ -484,15 +482,15 @@ class TestErrorModels_ImgClass:
         # len_output = len(corr_output)
         return corr_output 
             
-    def _run_inference_resil_model(self):
+    def __run_inference_resil_model(self):
         self.RESIL_MODEL.eval()
         start = time.time()
         resil_output, nan_dict_resil, inf_dict_resil, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_MODEL, resil=self.resil_name.lower())
         if self.inf_nan_monitoring:
-            self.nan_flag_image_resil_model = nan_dict_resil['flag'] #Flag true or false per image depending if nan found at any layer
-            self.nan_inf_flag_image_resil_model = [nan_dict_resil['flag'][h] or inf_dict_resil['flag'][h] for h in range(len(inf_dict_resil['flag']))]
-            self.nan_inf_overall_layers_image_resil_model = [np.unique(nan_dict_resil['overall'][i] + inf_dict_resil['overall'][i]).tolist() for i in range(len(nan_dict_resil['overall']))]
-            self.nan_inf_first_occurrence_image_resil_model = [i for i in nan_dict_resil['first_occur_compare']]
+            self.nan_flag_image_resil_model = [[a for a in nandictresil['flag']] for nandictresil in  nan_dict_resil] #Flag true or false per image depending if nan found at any layer
+            self.nan_inf_flag_image_resil_model = [[nan_dict_resil[idx]['flag'][h] or infdictresil['flag'][h] for h in range(len(infdictresil['flag']))] for idx, infdictresil in enumerate(inf_dict_resil)]
+            self.nan_inf_overall_layers_image_resil_model = [[np.unique(nandictresil['overall'][i] + inf_dict_resil[idx]['overall'][i]).tolist() for i in range(len(nandictresil['overall']))] for idx, nandictresil in enumerate(nan_dict_resil)]
+            self.nan_inf_first_occurrence_image_resil_model = [[i for i in nandictresil['first_occur_compare']] for nandictresil in nan_dict_resil]
         if self.ranger_detector:
             self.resil_ranger_actvns.extend(detected_activations)
         if self.quant_extr:
@@ -516,7 +514,7 @@ class TestErrorModels_ImgClass:
         # len_output = len(resil_output)
         return resil_output
 
-    def run_inference_resil_corr_model(self):
+    def __run_inference_resil_corr_model(self):
         start = time.time()
         # if self.corr_img:
         #     self.RESIL_CORR_MODEL = self.RESIL_MODEL
@@ -524,10 +522,10 @@ class TestErrorModels_ImgClass:
         resil_corr_output, nan_dict_resil_corr, inf_dict_resil_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_CORR_MODEL, resil=self.resil_name.lower())
 
         if self.inf_nan_monitoring:
-            self.nan_flag_image_resil_corr_model = nan_dict_resil_corr['flag'] #Flag true or false per image depending if nan found at any layer
-            self.nan_inf_flag_image_resil_corr_model = [nan_dict_resil_corr['flag'][h] or inf_dict_resil_corr['flag'][h] for h in range(len(inf_dict_resil_corr['flag']))]
-            self.nan_inf_overall_layers_image_resil_corr_model = [np.unique(nan_dict_resil_corr['overall'][i] + inf_dict_resil_corr['overall'][i]).tolist() for i in range(len(nan_dict_resil_corr['overall']))]
-            self.nan_inf_first_occurrence_image_resil_corr_model = [i for i in nan_dict_resil_corr['first_occur_compare']]
+            self.nan_flag_image_resil_corr_model = [[a for a in nandictresilcorr['flag']] for nandictresilcorr in  nan_dict_resil_corr] #Flag true or false per image depending if nan found at any layer
+            self.nan_inf_flag_image_resil_corr_model = [[nan_dict_resil_corr[idx]['flag'][h] or infdictresilcorr['flag'][h] for h in range(len(infdictresilcorr['flag']))] for idx, infdictresilcorr in enumerate(inf_dict_resil_corr)]
+            self.nan_inf_overall_layers_image_resil_corr_model = [[np.unique(nandictresilcorr['overall'][i] + inf_dict_resil_corr[idx]['overall'][i]).tolist() for i in range(len(nandictresilcorr['overall']))] for idx, nandictresilcorr in enumerate(nan_dict_resil_corr)]
+            self.nan_inf_first_occurrence_image_resil_corr_model = [[i for i in nandictresilcorr['first_occur_compare']] for nandictresilcorr in nan_dict_resil_corr]
         if self.ranger_detector:
             self.resil_corr_ranger_actvns.extend(detected_activations)
         if self.quant_extr:
@@ -557,15 +555,15 @@ class TestErrorModels_ImgClass:
         with torch.no_grad():
             if self.orig_model_run:
                 if self.golden_epoch:
-                    orig_output = self._run_inference_orig_model()
+                    orig_output = self.__run_inference_orig_model()
                 if self.orig_model_FI_run:
-                    corr_output = self._run_inference_corr_model()
+                    corr_output = self.__run_inference_corr_model()
 
             if self.resil_model_run:
                 if self.golden_epoch:
-                    resil_output = self._run_inference_resil_model()
+                    resil_output = self.__run_inference_resil_model()
                 if self.resil_model_FI_run:
-                    resil_corr_output = self.run_inference_resil_corr_model()
+                    resil_corr_output = self.__run_inference_resil_corr_model()
 
 
             for i in range(len(orig_output)):

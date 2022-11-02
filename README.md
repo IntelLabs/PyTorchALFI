@@ -85,7 +85,7 @@ Here is an example: "result_files/LeNet_orig_1_trials/neurons_injs/per_batch/imC
 #### Image classification model evaluation  
 
 For image classification the test results are stored in csv files. Files can be found in the directory described above. Result file names are constructed as follows:
-The model name + "_test_random_sbf_" + the injection type (either "neurons" or "weights") + "_inj". This is followed by the number of faults, the number of runs and the batch size + "bs". Finally the dataset and the string "results" or "results_golden" is attached. Here is an example showing that the original LeNet model was used with faults inejcted into neurons where 1 fault per image in 1 run and batch size 10 were used with the mnist dataset: "LeNet_orig_test_random_sbf_neurons_inj_1_1_10bs_mnist_results_golden.csv"
+The model name + "_test_random_sbf_" + the injection type (either "neurons" or "weights") + "_inj". This is followed by the number of faults, the number of runs and the batch size + "bs". Finally the dataset and the string "results" or "results_golden" is attached. Here is an example showing that the original LeNet model was used with faults injected into neurons where 1 fault per image in 1 run and batch size 10 were used with the mnist dataset: "LeNet_orig_test_random_sbf_neurons_inj_1_1_10bs_mnist_results_golden.csv"
 
 The golden csv file has the following structure:  
 File path (depending on the used dataset might not be available and show -1), ground truth class, original output index - top5,original output score - top5,time - original model and some fields that are not relevant for the opensource version.  

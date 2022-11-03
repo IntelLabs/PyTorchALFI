@@ -12,7 +12,6 @@ class ConfigParser:
         self.print = False
         self.fi_logfile = "-1"
         self.read_from_file = "-1"
-        self.dataset_size = -1
         self.num_runs = -1
         self.max_faults_per_image = -1
         self.max_fault_rate = -1.0
@@ -71,12 +70,6 @@ class ConfigParser:
                 self.reason.append("Wrong value for read_from_file {}".format(
                     self.read_from_file))
                 self.valid = False
-        if self.dataset_size == -1:
-            self.reason.append("mandatory dataset_size not set")
-            self.valid = False
-        elif not self.isnumber(self.dataset_size):
-            self.reason.append("dataset_size is not a number")
-            self.valid = False
         if self.num_runs == -1:
             log.warning("num_runs not set, setting to 1")
             self.num_runs = 1

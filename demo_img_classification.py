@@ -150,7 +150,7 @@ class  build_objdet_native_model_img_cls(build_native_model):
             raise AttributeError(method)
 
     def __call__(self, input, dummy=False):
-        input = pytorchFI_objDet_inputcheck(input)
+        input = pytorchFI_objDet_inputcheck(input, dummy=dummy)
 
         _input = input
         if self.preprocess:

@@ -271,7 +271,7 @@ frcnn_Errormodel = TestErrorModels_ObjDet(model=wrapped_model, resil_model=None,
                 ranger_bounds=None, device=device,  inf_nan_monitoring=True, disable_FI=False, dl_attr=dl_attr, num_faults=0, fault_file=fault_files, \
                     resume_dir=None, copy_yml_scenario = False)
 ```
-Most parameters were previously set through the command line. The parameters starting with "resil" and "ranger" can be ignored in this opensource version and should be set to None. Please contact the authors if you would like to learn more about this functionality. The parameter `disable_FI` if set to true will prevent any faults being injected and no faulty model will be created. If it is set to True than a copy of the original model will be generated. Both models will be run in sequence and 
+Most parameters were previously set through the command line. The parameters starting with "resil" and "ranger" can be ignored in this opensource version and should be set to None. Please contact the authors if you would like to learn more about this functionality. The parameter `disable_FI` if set to true will prevent any faults being injected and no faulty model will be created.
 
 
 

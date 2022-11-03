@@ -413,10 +413,10 @@ class TestErrorModels_ObjDet:
         try:
             corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial')
             if self.inf_nan_monitoring:
-                self.nan_flag_image_corr_model.extend([[a for a in nandictcorr['flag']] for nandictcorr in  nan_dict_corr])  #Flag true or false per image depending if nan found at any layer
-                self.nan_inf_flag_image_corr_model.extend([[nan_dict_corr[idx]['flag'][h] or infdictcorr['flag'][h] for h in range(len(infdictcorr['flag']))] for idx, infdictcorr in enumerate(inf_dict_corr)])
-                self.nan_inf_overall_layers_image_corr_model.extend([[np.unique(nandictcorr['overall'][i] + inf_dict_corr[idx]['overall'][i]).tolist() for i in range(len(nandictcorr['overall']))] for idx, nandictcorr in enumerate(nan_dict_corr)])
-                self.nan_inf_first_occurrence_image_corr_model.extend([[i for i in nandictcorr['first_occur_compare']] for nandictcorr in nan_dict_corr])
+                self.nan_flag_image_corr_model.extend([a for a in nan_dict_corr['flag']]) #Flag true or false per image depending if nan found at any layer
+                self.nan_inf_flag_image_corr_model.extend([nan_dict_corr['flag'][h] or inf_dict_corr['flag'][h] for h in range(len(inf_dict_corr['flag']))])
+                self.nan_inf_overall_layers_image_corr_model.extend([np.unique(nan_dict_corr['overall'][i] + inf_dict_corr['overall'][i]).tolist() for i in range(len(nan_dict_corr['overall']))])
+                self.nan_inf_first_occurrence_image_corr_model.extend([i for i in nan_dict_corr['first_occur_compare']])
             if self.ranger_detector and detected_activations is not None:
                 self.corr_ranger_actvns.extend(list(detected_activations))
             if self.quant_extr:
@@ -454,11 +454,10 @@ class TestErrorModels_ObjDet:
                 resil_outputs, nan_dict_resil, inf_dict_resil, detected_activations, penulLayer, quant_list = self.attach_hooks(self.RESIL_MODEL, resil=self.resil_name.lower())
 
                 if self.inf_nan_monitoring:
-                    self.nan_flag_image_resil_model.extend([[a for a in nandictresil['flag']] for nandictresil in  nan_dict_resil])  #Flag true or false per image depending if nan found at any layer
-                    self.nan_inf_flag_image_resil_model.extend([[nan_dict_resil[idx]['flag'][h] or infdictresil['flag'][h] for h in range(len(infdictresil['flag']))] for idx, infdictresil in enumerate(inf_dict_resil)])
-                    self.nan_inf_overall_layers_image_resil_model.extend([[np.unique(nandictresil['overall'][i] + inf_dict_resil[idx]['overall'][i]).tolist() for i in range(len(nandictresil['overall']))] for idx, nandictresil in enumerate(nan_dict_resil)])
-                    self.nan_inf_first_occurrence_image_resil_model.extend([[i for i in nandictresil['first_occur_compare']] for nandictresil in nan_dict_resil])
-
+                    self.nan_flag_image_resil_model.extend([a for a in nan_dict_resil['flag']]) #Flag true or false per image depending if nan found at any layer
+                    self.nan_inf_flag_image_resil_model.extend([nan_dict_resil['flag'][h] or inf_dict_resil['flag'][h] for h in range(len(inf_dict_resil['flag']))])
+                    self.nan_inf_overall_layers_image_resil_model.extend([np.unique(nan_dict_resil['overall'][i] + inf_dict_resil['overall'][i]).tolist() for i in range(len(nan_dict_resil['overall']))])
+                    self.nan_inf_first_occurrence_image_resil_model.extend([i for i in nan_dict_resil['first_occur_compare']])
                 if self.ranger_detector and detected_activations is not None:
                     self.resil_ranger_actvns.extend(list(detected_activations))
                 if self.quant_extr:
@@ -488,11 +487,10 @@ class TestErrorModels_ObjDet:
         try:
             resil_corr_outputs, nan_dict_resil_corr, inf_dict_resil_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.RESIL_CORR_MODEL, resil=self.resil_name.lower())
             if self.inf_nan_monitoring:
-                self.nan_flag_image_resil_corr_model.extend([[a for a in nandictresilcorr['flag']] for nandictresilcorr in  nan_dict_resil_corr])  #Flag true or false per image depending if nan found at any layer
-                self.nan_inf_flag_image_resil_corr_model.extend([[nan_dict_resil_corr[idx]['flag'][h] or infdictresilcorr['flag'][h] for h in range(len(infdictresilcorr['flag']))] for idx, infdictresilcorr in enumerate(inf_dict_resil_corr)])
-                self.nan_inf_overall_layers_image_resil_corr_model.extend([[np.unique(nandictresilcorr['overall'][i] + inf_dict_resil_corr[idx]['overall'][i]).tolist() for i in range(len(nandictresilcorr['overall']))] for idx, nandictresilcorr in enumerate(nan_dict_resil_corr)])
-                self.nan_inf_first_occurrence_image_resil_corr_model.extend([[i for i in nandictresilcorr['first_occur_compare']] for nandictresilcorr in nan_dict_resil_corr])
-
+                self.nan_flag_image_resil_corr_model.extend([a for a in nan_dict_resil_corr['flag']]) #Flag true or false per image depending if nan found at any layer
+                self.nan_inf_flag_image_resil_corr_model.extend([nan_dict_resil_corr['flag'][h] or inf_dict_resil_corr['flag'][h] for h in range(len(inf_dict_resil_corr['flag']))])
+                self.nan_inf_overall_layers_image_resil_corr_model.extend([np.unique(nan_dict_resil_corr['overall'][i] + inf_dict_resil_corr['overall'][i]).tolist() for i in range(len(nan_dict_resil_corr['overall']))])
+                self.nan_inf_first_occurrence_image_resil_corr_model.extend([i for i in nan_dict_resil_corr['first_occur_compare']])
             if self.ranger_detector and detected_activations is not None:
                 self.resil_corr_ranger_actvns.extend(list(detected_activations))
             if self.quant_extr:
@@ -551,7 +549,7 @@ class TestErrorModels_ObjDet:
         output = model(self.dataloader.data)
  
         if self.inf_nan_monitoring:
-            nan_dict_corr, inf_dict_corr = run_nan_inf_hooks(save_nan_inf, hook_handles_nan_inf, hook_layer_names, batch_size=self.dl_attr.dl_batch_size)
+            nan_dict_corr, inf_dict_corr = run_nan_inf_hooks(save_nan_inf, hook_handles_nan_inf, hook_layer_names)
         if resil is not None and self.ranger_detector:
             detected_activations = self.__clean_ranger_hooks(hook_handles_acts, hook_list)
         if self.sim_score:
@@ -567,9 +565,8 @@ class TestErrorModels_ObjDet:
         ## only stores for faulty inferences  injected with bit flips
         if golden_epoch and self.resil_model_run:
             output_columns = ['nan_flag_resil_model', 'nan_or_inf_flag_resil_model', 'Nan_or_inf_layers_resil_model', 'Nan_inf_first_occurrence_resil_model']
-            values = [self.nan_flag_image_resil_model, self.nan_inf_flag_image_resil_model, self.nan_inf_overall_layers_image_resil_model, self.nan_inf_first_occurrence_image_resil_model]
-            values =[[zip_val[0][0], zip_val[1][0], zip_val[2][0], zip_val[3][0]] for zip_val in zip(values[0], values[1], values[2], values[3])]
-            inf_nan_dataframe = pd.DataFrame(values, columns = output_columns)
+            values = [self.nan_flag_image_resil_model, self.nan_inf_flag_image_resil_model, self.nan_inf_overall_layers_image_resil_model, self.nan_inf_first_occurrence_image_resil_model]            
+            inf_nan_dataframe = pd.DataFrame(np.array(values).T, columns = output_columns)
             generic_file_path = os.path.join(self.outputdir, self.dataset_name, '{}_model'.format(self.resil_name), 'epochs', str(self.curr_epoch), "inf_nan")
 
             print('storing resil models nan and inf info into {}'.format(generic_file_path + '.csv'))
@@ -582,8 +579,7 @@ class TestErrorModels_ObjDet:
             if self.orig_model_FI_run:
                 output_columns = ['nan_flag_corr_model', 'nan_or_inf_flag_corr_model', 'Nan_or_inf_layers_corr_model', 'Nan_inf_first_occurrence_corr_model']
                 values = [self.nan_flag_image_corr_model, self.nan_inf_flag_image_corr_model, self.nan_inf_overall_layers_image_corr_model, self.nan_inf_first_occurrence_image_corr_model]
-                values =[[zip_val[0][0], zip_val[1][0], zip_val[2][0], zip_val[3][0]] for zip_val in zip(values[0], values[1], values[2], values[3])]
-                inf_nan_dataframe = pd.DataFrame(values, columns = output_columns)
+                inf_nan_dataframe = pd.DataFrame(np.array(values, dtype=object).T, columns = output_columns)
                 generic_file_path = os.path.join(self.outputdir, self.dataset_name, 'corr_model', 'epochs', str(self.curr_epoch), "inf_nan")
 
                 print('storing corr models nan and inf info into {}'.format(generic_file_path + '.csv'))
@@ -595,9 +591,8 @@ class TestErrorModels_ObjDet:
                 self.inf_nan_monitoring_init(model="orig")
             if self.resil_model_FI_run:
                 output_columns = ['nan_flag_resil_corr_model', 'nan_or_inf_flag_resil_corr_model', 'Nan_or_inf_layers_resil_corr_model', 'Nan_inf_first_occurrence_resil_corr_model']
-                values = [self.nan_flag_image_resil_corr_model, self.nan_inf_flag_image_resil_corr_model, self.nan_inf_overall_layers_image_resil_corr_model, self.nan_inf_first_occurrence_image_resil_corr_model]
-                values =[[zip_val[0][0], zip_val[1][0], zip_val[2][0], zip_val[3][0]] for zip_val in zip(values[0], values[1], values[2], values[3])]
-                inf_nan_dataframe = pd.DataFrame(values, columns = output_columns)
+                values = [self.nan_flag_image_resil_corr_model, self.nan_inf_flag_image_resil_corr_model, self.nan_inf_overall_layers_image_resil_corr_model, self.nan_inf_first_occurrence_image_resil_corr_model]                
+                inf_nan_dataframe = pd.DataFrame(np.array(values).T, columns = output_columns)
                 generic_file_path = os.path.join(self.outputdir, self.dataset_name, '{}_corr_model'.format(self.resil_name), 'epochs', str(self.curr_epoch), "inf_nan")
 
                 print('storing {} resil corr models nan and inf into {}'.format(self.resil_name, generic_file_path + '.csv'))
@@ -777,7 +772,7 @@ class TestErrorModels_ObjDet:
                 f.flush()
                 f.close()
                 
-                print('{}: saving fault file with bit flip direction info with {} fault runset length and total {} bit flips'.format(used_model, len(runset[0,:]), len(bit_flips_direc)))
+                print('{}: saving fault file with bit flip direction info with {} fault runset length and total {} bit flips into {}'.format(used_model, len(runset[0,:]), len(bit_flips_direc), f.name))
 
         if (not self.copy_yml_scenario and not self.disable_FI) or self.create_new_folder:
             fault_bin = os.path.join(self.outputdir, self.dataset_name, self.func + '_' +
@@ -853,6 +848,10 @@ class TestErrorModels_ObjDet:
     def set_FI_attributes(self):
         if not self.disable_FI:
             self.scenario_is_modified = True
+            if self.num_faults:
+                self.model_scenario["max_faults_per_image"] = self.num_faults
+            else:
+                self.num_faults = self.reference_wrapper.parser.max_faults_per_image
             if not self.copy_yml_scenario:
                 if self.num_runs:
                     self.model_scenario["num_runs"] = self.num_runs
@@ -866,11 +865,8 @@ class TestErrorModels_ObjDet:
                     self.outputdir = self.resume_dir
                 else:
                     self.outputdir  = os.path.join(self._outputdir, '{}_{}_trials'.format(
-                        self.model_name, self.num_runs), '{}_injs'.format(self.inj_value_type), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, self.bit_range))
-            if self.num_faults:
-                self.model_scenario["max_faults_per_image"] = self.num_faults
-            else:
-                self.num_faults = self.reference_wrapper.parser.max_faults_per_image
+                        self.model_name, self.num_runs), '{}_injs'.format(self.reference_parser.rnd_mode), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, self.bit_range))
+
 
             if self.fault_file and self.copy_yml_scenario:
                 assert up(self.fault_file) == up(self.model_scenario_file), "Fault file and scenario file don't belong to same experiment folder"
@@ -917,7 +913,7 @@ class TestErrorModels_ObjDet:
             self.bit_range = self.bit_range.replace(" ", "")
             self.dataset_name = self.dl_attr.dl_dataset_name
             self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
-            self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.inj_value_type)
+            self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.reference_parser.rnd_mode)
             if self.copy_yml_scenario and not(self.create_new_folder):
                 outputdir = up(up(up(list(Path(os.path.dirname(self.fault_file)).glob('**/*.yml'))[0])))
                 if self.resume_inj:

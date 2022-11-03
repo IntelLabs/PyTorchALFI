@@ -12,7 +12,7 @@ The [Fig. 1](#Schematic) gives an overview of the structure of pytorch-ALFI.
 <figcaption align = "center"><b> Fig. 1: Pytorch-ALFI System overview </b></figcaption>
 <br/><br/>
 
-The core of the tool is the "alficore" component, which provides a test class that integrates all functionalities. The specifics of the fault injection campaign, such as fault model and number of injected faults, will be configured in the "scenario configuration" component. The "pytorchfi" component will take care of the fault injection execution. Alficore further provides multiple optional functionalities, in form of the components "Dataloaders" (provide a selection of simple-to-use dataloaders), "Monitoring" (functions to monitor the occurrence of not-a-number, NaN, or infinity, Inf, values), "Evaluation" (calculate SDC or DUE rates), and "Visualization" (plot key results, currently only for object detection). A detailed description of the workflow can be found in the next sections. To run a minimal example, the following demo scripts can be used.
+The core of the tool is the **alficore** component, which provides a test class that integrates all functionalities. The specifics of the fault injection campaign, such as fault model and number of injected faults, will be configured in the **scenario configuration** component. The **pytorchfi** component will take care of the fault injection execution. Alficore further provides multiple optional functionalities, in form of the components **Dataloaders** (provide a selection of simple-to-use dataloaders), **Monitoring** (functions to monitor the occurrence of not-a-number, NaN, or infinity, Inf, values), **Evaluation** (calculate SDC or DUE rates), and **Visualization** (plot key results, currently only for object detection). A detailed description of the workflow can be found in the next sections. To run a minimal example, the following demo scripts can be used.
 
 
 ### Minimal example for image classification:
@@ -20,9 +20,9 @@ This script runs a classification example of the model LeNet-5 on the MNIST data
 ```
 python demo_img_classification.py
 ```
-You will get the results saved in a folder ```<path to result files>``` (see console print for exact location). For subsequent evaluation, run:
+You will get the results saved in a folder ```<path to result files>``` (see console print for exact location). For subsequent evaluation, enter this path in the evaluation file at evaluation/eval_img_classification.py and run it:
  ```
-python alficore/evaluation/eval_img_classification.py <path to result files>
+python evaluation/eval_img_classification.py
 ```
   
 ### Minimal example for object detection:
@@ -30,10 +30,10 @@ This script runs an object detection example of the model Faster-RCNN on the COC
 ```
 python demo_obj_detection.py
 ```
-You will get the results saved in a folder ```<path to result files>```. For subsequent evaluation, run:
+You will get the results saved in a folder ```<path to result files>```. For subsequent evaluation, enter this path in the evaluation files at evaluation/obj_det_analysis.py and evaluation/obj_det_plot_metrics_all_models.py, respectively, and run it:
 ```
-python alficore/evaluation/sdc_plots/obj_det_analysis.py <path to results files>
-python alficore/evaluation/sdc_plots/obj_det_plot_metrics_all_models.py <path to result files>
+python evaluation/obj_det_analysis.py
+python evaluation/obj_det_plot_metrics_all_models.py
 ```
 
 ## System components
@@ -56,7 +56,7 @@ Finally **PytorchFI parameters** only contain settings for input image dimension
 
 ### Pytorchfi
 
-The Pytorchfi module contains the already mentioned modified version of the pytorchfi fault injector by the University of Illinois from [here](https://github.com/pytorchfi/pytorchfi). It provides the actual injection functionality into neural networks. It is not necessary to call code from this module directly.
+The Pytorchfi module contains the already mentioned modified version of the pytorchfi fault injector [here](https://github.com/pytorchfi/pytorchfi). It provides the actual injection functionality into neural networks. It is not necessary to call code from this module directly.
 
 ### Alficore
 
@@ -74,18 +74,15 @@ Monitoring functions are optional but can be used to identify samples where, for
 
 ### Evaluation
 
-Result files are stored in directories that reflect the paramters of the test run. The top level directory is set in the `scenarios\default.yml` file or similar using the parameter `save_fault_file_dir`. Per default it is `result_files`.  
-The next sub-directory is named \<ModelName\>\_\<number of runs\>\_"trials".  
-Next we put the \<injection mode\> + "\_injs". Injection mode is either "neurons" or "weights".  
-Then follows the injection policy which can be either "per_image", "per_epoch", or "per_batch".  
+Result files are stored in directories that reflect the paramters of the test run. The top level directory is set in the `scenarios\default.yml` file or similar using the parameter `save_fault_file_dir`. Per default it is `result_files`.  The next sub-directory is named \<ModelName\>\_\<number of runs\>\_"trials".  
+Next we put the \<injection mode\> + "\_injs". Injection mode is either "neurons" or "weights".  Then follows the injection policy which can be either "per_image", "per_epoch", or "per_batch".  
 After that follows a directory combining the string "objDet" or "imClass" for the type of model with a time stamp, the number of faults per injection and the bit-range in which was injected.  
-Finally the dataset name and the dataset type (train, val or test) are appended.  
-Here is an example: "result_files/LeNet_orig_1_trials/neurons_injs/per_batch/imClass_20221024-144100_1_faults_[0,8]_bits/mnist/val/"
+Finally the dataset name and the dataset type (train, val or test) are appended.  Here is an example: "result_files/LeNet_orig_1_trials/neurons_injs/per_batch/imClass_20221024-144100_1_faults_[0,8]_bits/mnist/val/"
 
 #### Image classification model evaluation  
 
-For image classification the test results are stored in csv files. Files can be found in the directory described above. Result file names are constructed as follows:
-The model name + "_test_random_sbf_" + the injection type (either "neurons" or "weights") + "_inj". This is followed by the number of faults, the number of runs and the batch size + "bs". Finally the dataset and the string "results" or "results_golden" is attached. Here is an example showing that the original LeNet model was used with faults injected into neurons where 1 fault per image in 1 run and batch size 10 were used with the mnist dataset: "LeNet_orig_test_random_sbf_neurons_inj_1_1_10bs_mnist_results_golden.csv"
+For image classification, the test results are stored in csv files. Files can be found in the directory described above. Result file names are constructed as follows:
+The model name + "_test_random_sbf_" + the injection type (either "neurons" or "weights") + "_inj". This is followed by the number of faults, the number of runs and the batch size + "bs". Finally the dataset and the string "results" or "results_golden" is attached. Here is an example showing that the original LeNet model was used with faults inejcted into neurons where 1 fault per image in 1 run and batch size 10 were used with the mnist dataset: "LeNet_orig_test_random_sbf_neurons_inj_1_1_10bs_mnist_results_golden.csv"
 
 The golden csv file has the following structure:  
 File path (depending on the used dataset might not be available and show -1), ground truth class, original output index - top5,original output score - top5,time - original model and some fields that are not relevant for the opensource version.  
@@ -93,9 +90,9 @@ File path (depending on the used dataset might not be available and show -1), gr
 The csv file showing the effect of the fault injection (_results_corr.csv) has the following structure:  
 File path (depending on the used dataset might not be available and show -1), ground truth label, corrupted output index - top5, corrupted output score - top5, for fault position: layer,channel_in,channel_out,3D channel,height,width,bit,time - corrupted model and some fields that are not relevant for the opensource version.
 
-To evaluate an image classification experiment, give the evaluation path to the script alficore/evaluation/eval_img_classification.py and run it:
+To evaluate an image classification experiment, first enter the evaluation path (path to the results folder) in evaluation/eval_img_classification.py and run it:
 ```
-python alficore/evaluation/eval_img_classification.py <path to csv result files>
+python evaluation/eval_img_classification.py
 ```
 This will print you the resulting accuracy, DUE rate, and SDC rate to the command line.
 
@@ -107,20 +104,29 @@ The demo file uses the Coco dataset. Due to its size we don't include it in this
 
 The demo script already prints average precision and recall values to the command line. 
 
-The location of result files is logged to the terminal when running the demo script. The directory is constructed as described at the beginning of section [Evaluation](#evaluation). Inside the results directory are 2 versions of the applied faults as .bin files. A yaml file contains the applied test parameters and the file `coco_format.json` the used dataset. The test metrics can be found in the sub-directories `corr_model` for the corrupted model results meaning results under the influence of injected faults and `orig_model` for the unmodified model. Below those are separate directories for each epoch run. There the file `coco_results_corr_model_\*.json` contains aggregated metric values while the file `coco_instances_results\*.json` contains model prediction results.  In the case of the demo these result values are `image_id, category_id, bounding box coordinates, bounding box mode and a category score`.
+The location of result files is logged to the terminal when running the demo script. The directory is constructed as described at the beginning of section [Evaluation](#evaluation). Inside the results directory are 2 versions of the applied faults as .bin files. A yaml file contains the applied test parameters and the file `coco_format.json` the used dataset. The test metrics can be found in the sub-directories `corr_model` for the corrupted model results meaning results under the influence of injected faults and `orig_model` for the unmodified model. Below those are separate directories for each epoch run. There the file `oco_results_corr_model_\*.json` contains aggregated metric values while the file `coco_instances_results\*.json` contains model prediction results.  In the case of the demo these result values are `image_id, category_id, bounding box coordinates, bounding box mode and a category score`.
   
-Additional tools for evaluation are provided in the directory `alficore/evaluation`. The vulnerability of the model depends on the metric (refer paper for more details). These results are generated by aggregating the vulnerability of the models using AP and IVMOD Metric and it is stored into a json file. This is achieved by running the script `alficore/evaluation/sdc_plots/obj_det_analysis.py <path to results from demo_obj_detection.py run>`. The single mandatory parameter is an array of result directories down to the directory `coco`. The resulting json files again are placed into the sub-directory `sdc_eval` below the original results directory. 2 files are created.  
+Additional tools for evaluation are provided in the directory `evaluation`. The vulnerability of the model depends on the metric (refer paper for more details). These results are generated by aggregating the vulnerability of the models using AP and IVMOD Metric and it is stored into a json file. This is achieved by 
+entering the evaluation path (path to the results folder) in evaluation/obj_det_analysis.py and running the script: 
+```
+python evaluation/obj_det_analysis.py
+```
+The single mandatory parameter is an array of result directories down to the directory `coco`. The resulting json files again are placed into the sub-directory `sdc_eval` below the original results directory. 2 files are created.  
 The file containing `*images*` summarizes the effect of faults by mapping silent data corruption faults (sdc) to images. At the beginning the file stores the fault locations in the key `flts_sdc`. This key stores different records and the length of each record corresponds to the number of images where injected faults led to a sdc. The structure of these faults is explained at the beginning of section [Process Flow](#process-flow). It then lists the number of inflicted files and their id's. Finally the fault rate for each image for both original and corrupted model is listed using the formula $F1 = { 2tp \over (2tp + fp + fn)}$ .  
 The second file `*backup*` contains the raw data elements to calculate the first.
 
-Finally some example scripts are provided on how to visualize the results in above files. The script `alficore/evaluation/sdc_plots/obj_det_plot_metrics_all_models.py` can be used for this purpose. Please call `python alficore/evaluation/sdc_plots/obj_det_plot_metrics_all_models.py -h` to see its parameters. The only mandatory parameter is the path to the previously generated json files. We provided the above evaluation files as an example and this can be used to extend to compute and plot custom metrics. The results in the paper in the reference section are produced using pytorch-ALFI and are visualised using these evaluation files. To keep things simple for users's initial exploration, the above mentioned evaluation process can be easily reproduced by just running the files without much changes. It is developed to run out of the box for in-built metrics.
+Finally some example scripts are provided on how to visualize the results in above files. To run a visualization, enter one or multiple evaluation paths (paths to the results folder) in evaluation/obj_det_analysis.py and run
+```
+python evaluation/obj_det_plot_metrics_all_models.py
+```
+can be used for this purpose (please call `-h` to see its parameters). The only mandatory parameter is the path to the previously generated json files.  file as a dictionary which then plots the above figures. We provided the above evaluation files as an example and this can be used to extend to compute and plot custom metrics. The results in the above mentioned paper are produced using pytorch-ALFI and is visualised using these evaluation files. To keep things simple for users's initial exploration, the above mentioned evaluation process can be easily reproduced by just running the files without much changes. It is developed to run out of the box for in-built metrics.
 
 
 ## General workflow
 
 ### Scope
 Current constraints for the use of the tool are:
-- Input has the form of images (i.e. 3-dimensional arrays)
+- Input has the form of images (i.e. 1-dimensional or 3-dimensional arrays)
 - Model has convolutional or fully connected layers in the form of Pytorch modules
 - For monitoring: Model features supported activation layers in the form of Pytorch modules 
 
@@ -171,7 +177,7 @@ The following test result files are generated:
   For more details on csv and json result files see [Evaluation](#evaluation).
 
 
-### Integration Example
+### End-to-end integration example
 
 The files `demo_img_classification.py` and `demo_obj_detection.py` give an example of how to integrate pytorchalfi into a test scenario. The following things need to be prepared in advance:
 - a scenario configuration (see section [Scenario configuration](#scenario-configuration))
@@ -221,7 +227,7 @@ model = build_objdet_native_model(model=frcnn_model)
 
 ```
 You are free to open the model any way you like. In this example we are using the FasterRCNN model. 
-Next a value object of type `TEM_Dataloader_attr` is created that collects all parameters for the dataloader in one place. For the meaning of the `opt`  parameters please see the command line arguments. 
+Next a value object of type `TEM_Dataloader_attr` is created that collects all parameters for the dataloader in one place. Those parameters can modified manually or be parsed directly from the command line arguments (`opt = parse_opt()`):
 
 ```
 dl_attr = TEM_Dataloader_attr()
@@ -230,7 +236,7 @@ dl_attr.dl_batch_size     = opt.dl_batchsize
 dl_attr.dl_shuffle        = opt.shuffle
 dl_attr.dl_sampleN        = opt.sample_size
 dl_attr.dl_num_workers    = opt.num_workers
-dl_attr.dl_device         = device
+dl_attr.dl_device         = opt.device
 dl_attr.dl_dataset_name   = opt.dl_ds_name
 dl_attr.dl_img_root       = opt.dl_img_root
 dl_attr.dl_gt_json        = opt.dl_json

@@ -3,7 +3,6 @@ from pathlib import Path
 import numpy as np
 from sdc_plots.obj_det_analysis import get_fault_path, read_csv
 from sdc_plots.obj_det_evaluate_jsons import read_fault_file, load_json_indiv
-import argparse
 
 
 def add_data(toplot_dict, json_path):
@@ -44,30 +43,6 @@ def add_data(toplot_dict, json_path):
     m, err = get_m_err(due_rate)
     toplot_dict["due"]["mns_corr"].append(m)
     toplot_dict["due"]["errs_corr"].append(err)
-
-
-
-    # # sdc weighted (commented for now)
-    # diff_sdc = [np.array(corr_sdc[n]) - np.array(orig_sdc[n]) for n in range(len(orig_sdc))]
-    # n_no_nan_inf = np.array(n_all) - np.array(n_due)
-    # diff_sdc_ep_avg = [np.sum(diff_sdc[n])/n_no_nan_inf[n] for n in range(len(diff_sdc))]
-    # # m_old= [np.sum(diff_sdc[n])/len(diff_sdc[n]) for n in range(len(diff_sdc))]
-    # # diff_sdc_ep_avg = [np.mean(x) for x in diff_sdc]
-    # m,err = get_m_err(diff_sdc_ep_avg)
-    # toplot_dict["sdc_wgt"]["mns_diff"].append(m)
-    # toplot_dict["sdc_wgt"]["errs_diff"].append(err)
-
-    # # Orig sdc
-    # orig_sdc_ep_avg = [np.mean(x) for x in orig_sdc]
-    # m,err = get_m_err(orig_sdc_ep_avg)
-    # toplot_dict["sdc_wgt"]["mns_orig"].append(m)
-    # toplot_dict["sdc_wgt"]["errs_orig"].append(err)
-    # # Corrupted sdc
-    # corr_sdc_ep_avg = [np.mean(x) for x in corr_sdc]
-    # m,err = get_m_err(corr_sdc_ep_avg)
-    # toplot_dict["sdc_wgt"]["mns_corr"].append(m)
-    # toplot_dict["sdc_wgt"]["errs_corr"].append(err)
-
 
     # orig map
     m,err = get_m_err([orig_map]) #make single number a list
@@ -125,8 +100,6 @@ def get_m_err(list_to_plot):
 def get_col_nr_x(corr_res, y):
     ret = []
     for u in range(len(corr_res)):
-        # if corr_res[u][y-1] == 'als':
-        #     print()
         ret.append(corr_res[u][y])
     return ret
 
@@ -189,13 +162,6 @@ def extract_data(folder):
     else:
         print('Loading from fault file:', fault_file_noranger)
         ff_noranger = read_fault_file(fault_file_noranger) #tests
-    
-    # Ranger detection file ---------------
-    # det_path = list(Path(folder).glob('**/*_detections.bin') ) #dets without faults?
-    # if det_path != []:
-    #     dets = read_fault_file(str(det_path[0])) #tests #orig ranger, should be zero with proper bounds
-    #     print('nr of ranger detections', 'no faults', np.sum(np.array(dets)>0)/len(dets), np.sum(np.array(dets)>0), len(dets))
-    # # print('nr of ranger detections', 'faults', 'ranger applied', np.sum(ff[10,:]>0), '; no ranger applied', np.sum(ff_noranger[10,:]>0), '(should be the same)')
 
     # orig and corr csv files --------------
     orig_path = list(Path(folder).glob('**/*_golden.csv') ) 
@@ -256,17 +222,9 @@ def get_due_masks(corr_res):
 
     return due_corr, due_corr_resil
 
-def parse_opt():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('res_dir', type=str, help='path to result files')
-    opt = parser.parse_args()
-    return opt
+def img_class_eval(exp_folder_path):
 
-def main(argv):
-    opt = parse_opt()
-    folder = opt.res_dir
-
-    fault_file, orig_result, corr_result = extract_data(folder)
+    fault_file, orig_result, corr_result = extract_data(exp_folder_path)
 
     gnd, orig, orig_resil, corr, corr_resil, fpths = extract_predictions(orig_result, corr_result)
 
@@ -306,9 +264,3 @@ def main(argv):
     else:
         mask_sdc = np.array([])
         print('SDC rate:', np.sum(mask_sdc), ' %', '(', np.sum(mask_sdc), ' out of ', len(mask_sdc), ')')
-    
-    
-
-
-if __name__ == "__main__":
-    main(sys.argv)

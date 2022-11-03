@@ -616,7 +616,7 @@ class TestErrorModels_ImgClass:
                         self.golden_model_outputs = pd.DataFrame([df_i], columns = self.get_orig_output_columns())
                     else:
                         df_i = pd.DataFrame([df_i], columns = self.get_orig_output_columns())
-                        self.golden_model_outputs = self.golden_model_outputs.append(df_i, ignore_index = True)
+                        self.golden_model_outputs = pd.concat([self.golden_model_outputs, df_i], ignore_index = True)
 
                 if self.resil_model_FI_run:
                     if self.orig_model_FI_run:
@@ -658,7 +658,7 @@ class TestErrorModels_ImgClass:
                         self.model_outputs = pd.DataFrame([df_i], columns = self.get_corr_output_columns())
                     else:
                         df_i = pd.DataFrame([df_i], columns = self.get_corr_output_columns())
-                        self.model_outputs = self.model_outputs.append(df_i, ignore_index = True)
+                        self.model_outputs = pd.concat([self.model_outputs, df_i], ignore_index = True)
 
     def __save_ACTtrace(self):
         if self.golden_epoch:

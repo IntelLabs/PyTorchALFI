@@ -22,7 +22,7 @@ python demo_img_classification.py
 ```
 You will get the results saved in a folder ```<path to result files>``` (see console print for exact location). For subsequent evaluation, enter this path in the evaluation file at evaluation/eval_img_classification.py and run it:
  ```
-python evaluation/eval_img_classification.py
+python evaluation/img_class_eval.py
 ```
   
 ### Minimal example for object detection:

@@ -95,11 +95,11 @@ class fault_injection:
         # TODO this is not flexible at all, need to find a better method
 
         if self._INPUT_NUM == 3:
-            self.ORIG_MODEL(_dummyTensor, _dummyTensor, _dummyTensor)
+            self.ORIG_MODEL(_dummyTensor, _dummyTensor, _dummyTensor, dummy=True)
         elif self._INPUT_NUM == 2:
-            self.ORIG_MODEL(_dummyTensor, _dummyTensor)
+            self.ORIG_MODEL(_dummyTensor, _dummyTensor, dummy=True)
         else:
-            self.ORIG_MODEL(_dummyTensor)
+            self.ORIG_MODEL(_dummyTensor, dummy=True)
 
         for i in range(len(handles)):
             handles[i].remove()

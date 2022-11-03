@@ -32,7 +32,6 @@ run_type: single
 
 # This determines the total number of fault definitions that are prepared
 # The relevant parameters are:
-# dataset_size: number of images in your test dataset
 # num_runs: number of times you plan to iterate through the whole dataset
 # the following 2 arguments are mutually exclusive:
 # num_fault_per_image: how many faults should be injected per image
@@ -43,7 +42,6 @@ run_type: single
 # a: rnd_mode (either neurons or weights) the number of faults is calculated based on the number of relevant neurons
 # or weights respectively in the model
 # b: layer_types (either conv2d, conv3d or fcc) relevant neurons or weights are those related to the selected layer type
-dataset_size: 1 # keep at 1 for weight injection if used only once per epoch
 num_runs: 2
 # you can only set one of num_faults_per_image or max_fault_rate
 max_faults_per_image: 1

@@ -16,10 +16,17 @@ The core of the tool is the **alficore** component, which provides a test class 
 
 
 ### Setup
-First create a conda environment to install the list of required libraries
+First create a conda environment to install the list of required libraries. 
 
 ```
 conda create --file condaenv.yml
+```
+This will create a conda environment (pytorchALFI)
+
+Activate the environment using
+
+```
+conda activate pytorchALFI
 ```
 Then install the python libraries required by our code using the following command
 

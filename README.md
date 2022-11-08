@@ -15,6 +15,13 @@ The [Fig. 1](#Schematic) gives an overview of the structure of pytorch-ALFI.
 The core of the tool is the **alficore** component, which provides a test class that integrates all functionalities. The specifics of the fault injection campaign, such as fault model and number of injected faults, will be configured in the **scenario configuration** component. The **pytorchfi** component will take care of the fault injection execution. Alficore further provides multiple optional functionalities, in form of the components **Dataloaders** (provide a selection of simple-to-use dataloaders), **Monitoring** (functions to monitor the occurrence of not-a-number, NaN, or infinity, Inf, values), **Evaluation** (calculate SDC or DUE rates), and **Visualization** (plot key results, currently only for object detection). A detailed description of the workflow can be found in the next sections. To run a minimal example, the following demo scripts can be used.
 
 
+###Setup
+First create a conda environment to install the list of required libraries
+
+```
+conda create --f condaenv.yml
+```
+
 ### Minimal example for image classification:
 This script runs a classification example of the model LeNet-5 on the MNIST dataset, injecting one neuron fault per image:
 ```

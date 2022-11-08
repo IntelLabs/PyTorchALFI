@@ -21,6 +21,11 @@ First create a conda environment to install the list of required libraries
 ```
 conda create --file condaenv.yml
 ```
+Then install the python libraries required by our code using the following command
+
+```
+pip install -r requirements.txt
+```
 
 ### Minimal example for image classification:
 This script runs a classification example of the model LeNet-5 on the MNIST dataset, injecting one neuron fault per image:

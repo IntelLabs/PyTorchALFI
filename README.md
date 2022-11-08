@@ -45,9 +45,9 @@ We here discuss the functional elements as illustrated in [Fig. 1](#Schematic).
 Scenario configuration is done using yaml files in the top level directory `scenarios`. Please don't confuse with the `scenarios` folder inside `alficore`. The latter only contains a template as example. The existing yaml file contains detailed documentation. Therefore we only give a high level overview of the different sections in the file. 
 The **Basic Wrapper configuration** section contains some conveniency settings that are not mandatory. Faults that are applied to a model are stored in binary form and can be read using pickle. After that the data is available as dictionary. It is usually not necessary to open the file manually. The setting `fi_logfile`and `read_from_file` are related to this. The first gives a custom name when storing that file and the second loads existing faults to be reapplied to test scenarios and to repeat experiments.
 
-The **definition of FI scenario** section prepares the number of faults to be injected during inference for the chosen rnd_mode of either `weights` or `neurons`. The faults are pre-created at the very beginning before the actual fault injection run to save compute time and to be able to reuse exactly the same fault locations for different runs. With same fault locations we mean the "address" of the fault within the network (either in neurons or weights) and also its bit position is the same. The parameter `num_runs` is used to repeat the fault injection cammpaign for N (epoch) number of times . It is also used to  determine the number of pre-defined faults as the product num\_runs$ and `max_faults_per_image`. `max_faults_per_image` is the , setting the number of faults that are applied in each image.
+The **definition of FI scenario** section prepares the number of faults to be injected during inference for the chosen rnd_mode of either `weights` or `neurons`. The faults are pre-created at the very beginning before the actual fault injection run to save compute time and to be able to reuse exactly the same fault locations for different runs. With same fault locations we mean the "address" of the fault within the network (either in neurons or weights) and also its bit position is the same. The parameter `num_runs` is used to repeat the fault injection cammpaign for N (epoch) number of times . It is also used to  determine the number of pre-defined faults as the product `num\_runs` and `max_faults_per_image`. `max_faults_per_image` is the number of faults that are applied in each image.
 
-**types of layers supported** lets you select either a single layer type of a combination of several using a comma separated list in square brackets. 
+**types of layers supported** lets you select either a single layer type or a combination of several using a comma separated list in square brackets. 
 
 **Random fault definition** is the most important section. Here you can fine tune the location of faults and if the same fault is repeated over several images or not. `rnd_mode` defines whether faults are injected into neurons or weights of a model. You can only select one of neurons or weights at a time. `inj_policy` defines how often the fault position is changed, for every image, for each batch or for each epoch. This setting now superceeds the settings for `rnd_batch`, `rnd_layer`, `rnd_location` and `rnd_value` which should always be kept to `change`. `rnd_value_type` represents the fault characteristic like bitflip or stuck_at faults. `rnd_value_bits` gives the number of bits in your values (quantization) while `rnd_bit_range` allows to specifiy the range in which a bit is randomly flipped. 
 
@@ -62,12 +62,11 @@ The Pytorchfi module contains the already mentioned modified version of the pyto
 
 The alficore module contains our wrapper to pytorchfi and the analysis components. The main entry point are the two files `alficore/wrapper/test_error_models_imgclass.py` and `alficore/wrapper/test_error_models_objdet.py`. Please see section [Integration Example](#integration-example) for an example on how to use them.
 
-
 ### Dataloaders
-Current data loader examples focus on image data sets only. Dataloaders are enhanced to allow capturing additional information during fault injection runs. The minimal information stored about each image are directory+filename, height, width and image id. This can be extended to individual needs. For a consistent handling of different datasets each dataset is brought into a json format as used in the CoCo dataset first. An example for converting text based labels to json based labels is presented in the example script `utils/kitti-2_coco_labels.py`. For object detection datasets please take note of the bounding box coordinate encoding that is used in the final json file. The different versions of BB encodings can be found in the file `Alfi-Core/dataloader/objdet_baseClasses/boxes.py`. 
+Current data loader examples focus on image data sets only. Dataloaders are enhanced to allow capturing additional information during fault injection runs. The minimal information stored about each image are directory+filename, height, width and image id. This can be extended to individual needs. For a consistent handling of different datasets each dataset is brought into a json format as used in the CoCo dataset first. An example for converting text based labels to json based labels is presented in the example script `utils/kitti-2_coco_labels.py`. For object detection datasets please take note of the bounding box coordinate encoding that is used in the final json file. The different versions of BB encodings can be found in the file `alficore/dataloader/objdet_baseClasses/boxes.py`. 
 Training, test and validation datasets can be configured in different json files. There is a script called `utils/split_data.py` that gives an example on how to create separate json files from one overall json file. For the later fault injection run only one of those files is used and need to be given as input parameter as explained in section [Integration Example](#integration-example).
-Dataloader examples are part of `Alfi-Core`. They can be found in directory `Alfi-Core/dataloader`. The file `abs_loader.py`contains an abstract dataloader class. Most functions can be overwritten and adjusted to the own needs. One function called `load_json` must be defined for each dataloader because it takes care of preparing the dataset dictionary. Examples can be found in `Alfi-Core/dataloader/coco_loader` and `Alfi-Core/dataloader/coco_loader`. We provide few wellknown dataloaders as examples which are optimized for pytorch-Alfi. This can be used as an example to develop dataloader for anyother dataset.
-The dataloaders are called in the files `Alfi-Core/wrapper/test_error_models_objdet.py` and `Alfi-Core/wrapper/test_error_models_imgclass.py` respectively. The first is used for object detection and the second for classification. Check the function ` __ptfi_dataloader` in either file for details.
+Dataloader examples are part of `alficore`. They can be found in directory `alficore/dataloader`. The file `abs_loader.py`contains an abstract dataloader class. Most functions can be overwritten and adjusted to the own needs. One function called `load_json` must be defined for each dataloader because it takes care of preparing the dataset dictionary. Examples can be found in `alficore/dataloader/coco_loader` and `alficore/dataloader/coco_loader`. We provide few wellknown dataloaders as examples which are optimized for pytorch-Alfi. This can be used as an example to develop dataloader for anyother dataset.
+The dataloaders are called in the files `alficore/wrapper/test_error_models_objdet.py` and `alficore/wrapper/test_error_models_imgclass.py` respectively. The first is used for object detection and the second for classification. Check the function ` __ptfi_dataloader` in either file for details.
 
 ### Monitoring
 Monitoring functions are optional but can be used to identify specific samples where, for example, non-numerical elements such as NaN or Inf were encountered or sample image which lead to maximum vulnerability. 
@@ -98,7 +97,7 @@ This will print you the resulting accuracy, DUE rate, and SDC rate to the comman
 
 #### Object detection model evaluation
 
-In this section we'll describe how to evaluate a fault injection experiment using the demo_obj_detection.py (ex: faster-rcnn model). As explained in [Process flow](#Process-flow), running the demo_obj_detection.py file creates the results files in a model specific dedicated folder containing fault locations as explained at the beginning of section [Evaluation](#evaluation). The evaluation metric depends on the application and the research problem one is keen to look into. In case of object detection models, currently we have CoCo-API and IVMOD (Image-wise vulnerability of object detection models) metric to compute the vulnerability of the models. The IVMOD metric was introduced in the 2022 paper (see [References [2]](#references))  
+In this section we'll describe how to evaluate a fault injection experiment using the demo_obj_detection.py (ex: faster-rcnn model). As explained in [Process Overview](#process-overview), running the demo_obj_detection.py file creates the results files in a model specific dedicated folder containing fault locations as explained at the beginning of section [Evaluation](#evaluation). The evaluation metric depends on the application and the research problem one is keen to look into. In case of object detection models, currently we have CoCo-API and IVMOD (Image-wise vulnerability of object detection models) metric to compute the vulnerability of the models. The IVMOD metric was introduced in the 2022 paper (see [References [2]](#references))  
 
 The demo file uses the Coco dataset. Due to its size we don't include it in this repository. Please download from [here](https://cocodataset.org/#download). For instance you can download the 2017 version of images and annotations. Use the parameters `--dl-json` and `--dl-img-root` to specify the locations of the anotation json and root directory for images respectively. 
 
@@ -112,7 +111,7 @@ entering the evaluation path (path to the results folder) in evaluation/obj_det_
 python evaluation/obj_det_analysis.py
 ```
 The single mandatory parameter is an array of result directories down to the directory `coco`. The resulting json files again are placed into the sub-directory `sdc_eval` below the original results directory. 2 files are created.  
-The file containing `*images*` summarizes the effect of faults by mapping silent data corruption faults (sdc) to images. At the beginning the file stores the fault locations in the key `flts_sdc`. This key stores different records and the length of each record corresponds to the number of images where injected faults led to a sdc. The structure of these faults is explained at the beginning of section [Process Flow](#process-flow). It then lists the number of inflicted files and their id's. Finally the fault rate for each image for both original and corrupted model is listed using the formula $F1 = { 2tp \over (2tp + fp + fn)}$ .  
+The file containing `*images*` summarizes the effect of faults by mapping silent data corruption faults (sdc) to images. At the beginning the file stores the fault locations in the key `flts_sdc`. This key stores different records and the length of each record corresponds to the number of images where injected faults led to a sdc. The structure of these faults is explained at the beginning of section [Process Overview](#process-overview). It then lists the number of inflicted files and their id's. Finally the fault rate for each image for both original and corrupted model is listed using the formula $F1 = { 2tp \over (2tp + fp + fn)}$ .  
 The second file `*backup*` contains the raw data elements to calculate the first.
 
 Finally some example scripts are provided on how to visualize the results in above files. To run a visualization, enter one or multiple evaluation paths (paths to the results folder) in evaluation/obj_det_analysis.py and run
@@ -162,8 +161,8 @@ The output of the experiment will be saved in the form of:
       # 5. height (everywhere) <br />
       # 6. width (everywhere) <br />
       # 7. value (everywhere) <br />
-- A corresponding detailed updated runset bin file (corr/resil*_updated_rs_fault_locs.bin) which contains faults used during specific fault campaign (normal corruption/corruption-with-resiliency-methods).  
-These detailed bin files can be used to trace faults used for a particular image. if num_runs=2, and sample images selected by dataloader is 50, then these updated bin files will consists of 100 rows, where first 50 rows correspond to first epoch of experiment and next 50 rows for second run. In addition to original bin file the updated version also contains bit-flip direction (monitor), orig value, corr value, reserved value] <br />
+- A corresponding detailed updated runset bin file (corr/resil*_updated_rs_fault_locs.bin) which contains faults used during specific fault campaign (normal corruption/corruption-with-resiliency-methods). In addition to the original bin file the updated version also contains bit-flip direction (monitor), orig value, corr value, reserved value] <br />
+These detailed bin files can be used to trace faults used for a particular image. if num_runs=2, and sample images selected by dataloader is 50, then these updated bin files will consists of 100 rows, where the first 50 rows correspond to the first epoch of experiment and the next 50 rows to the second epoch. 
 - a yaml file containing the used test parameters.
 
 The following test result files are generated:
@@ -227,7 +226,7 @@ model = build_objdet_native_model(model=frcnn_model)
 
 ```
 You are free to open the model any way you like. In this example we are using the FasterRCNN model. 
-Next a value object of type `TEM_Dataloader_attr` is created that collects all parameters for the dataloader in one place. Those parameters can modified manually or be parsed directly from the command line arguments (`opt = parse_opt()`):
+Next a value object of type `TEM_Dataloader_attr` is created that collects all parameters for the dataloader in one place. Those parameters can be modified manually or be parsed directly from the command line arguments (`opt = parse_opt()`):
 
 ```
 dl_attr = TEM_Dataloader_attr()
@@ -241,7 +240,7 @@ dl_attr.dl_dataset_name   = opt.dl_ds_name
 dl_attr.dl_img_root       = opt.dl_img_root
 dl_attr.dl_gt_json        = opt.dl_json
 ```
-For greater convenience and fine grain control about input and output data into and from your model an additional wrapper class `build_objdet_native_model` is applied. The wrapper behaves like the original model through the use of the `__getattr__` and `__call__` functions. You find the code in the same script. This wrapper class provides functions to pre-process input (e.g. if you want to furtner modify/augment your input images) and postprocess input. This function is important for the evaluation of the results of the fault injection. Please see the `__call__` function on how the pre- and postprocessing functions are invoked. Please observe in particular this code block in the postpocess function.
+For greater convenience and fine grain control about input and output data into and from your model an additional wrapper class `build_objdet_native_model` is applied. The wrapper behaves like the original model through the use of the `__getattr__` and `__call__` functions. You find the code in the same script. This wrapper class provides functions to pre-process input (e.g. if you want to further modify/augment your input images) and postprocess input. This function is important for the evaluation of the results of the fault injection. Please see the `__call__` function on how the pre- and postprocessing functions are invoked. Please observe in particular this code block in the postpocess function.
 
 ```
 Output, nms_indx = self.non_max_suppression(output)
@@ -271,11 +270,7 @@ frcnn_Errormodel = TestErrorModels_ObjDet(model=wrapped_model, resil_model=None,
                 ranger_bounds=None, device=device,  inf_nan_monitoring=True, disable_FI=False, dl_attr=dl_attr, num_faults=0, fault_file=fault_files, \
                     resume_dir=None, copy_yml_scenario = False)
 ```
-Most parameters were previously set through the command line. The parameters starting with "resil" and "ranger" can be ignored in this opensource version and should be set to None. Please contact the authors if you would like to learn more about this functionality. The parameter `disable_FI` if set to true will prevent any faults being injected and no faulty model will be created.
-
-
-
-
+Most parameters were previously set through the command line. The parameters starting with "resil" and "ranger" can be ignored in this opensource version and should be set to None. Please contact the authors if you would like to learn more about this functionality. If the parameter `disable_FI` if set to true it will prevent any faults from being injected and no faulty model will be created. This can be used e.g. if you would like to make use of our evaluation functions for an uncorrupted model.
 
 # References:
    **[1]** A. Mahmoud et al., “PyTorchFI: A Runtime Perturbation Tool for DNNs,” in 2020 50th Annual IEEE/IFIP International Conference on Dependable Systems and Networks Workshops (DSN-W), 2020, pp. 25–31.  

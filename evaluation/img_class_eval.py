@@ -5,7 +5,7 @@ from alficore.evaluation.img_class_eval import img_class_eval as imgclass_eval
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('res_dir', type=str, help='path to result files')
+    parser.add_argument('--res_dir', type=str, help='path to result files')
     opt = parser.parse_args()
     return opt
 

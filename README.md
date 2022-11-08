@@ -41,7 +41,7 @@ python demo_img_classification.py
 ```
 You will get the results saved in a folder ```<path to result files>``` (by default for LeNet mnist example the location will be ./result_files/LeNet_orig_1_trials/neurons_injs/per_batch/imClass_20221107-163929_1_faults_[0,8]_bits/mnist/val/). For subsequent evaluation, enter this path in the evaluation file at evaluation/img_class_eval.py and run it:
  ```
-python evaluation/img_class_eval.py --res_dir ```<path to result files>```
+python evaluation/img_class_eval.py --res_dir <path to result files>
 ```
 
  python evaluation/img_class_eval.py --res_dir ./result_files/LeNet_orig_1_trials/neurons_injs/per_batch/imClass_20221107-163929_1_faults_[0,8]_bits/mnist/val/

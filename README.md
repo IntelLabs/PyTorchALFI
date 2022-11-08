@@ -161,7 +161,7 @@ The output of the experiment will be saved in the form of:
       # 5. height (everywhere) <br />
       # 6. width (everywhere) <br />
       # 7. value (everywhere) <br />
-- A corresponding detailed updated runset bin file (corr/resil*_updated_rs_fault_locs.bin) which contains faults used during specific fault campaign (normal corruption/corruption-with-resiliency-methods). In addition to the original bin file the updated version also contains bit-flip direction (monitor), orig value, corr value, reserved value] <br />
+- A corresponding detailed updated runset bin file (corr/resil*_updated_rs_fault_locs.bin) which contains faults used during specific fault campaign (normal corruption/corruption-with-resiliency-methods). In addition to the original bin file the updated version also contains bit-flip direction (monitor), orig value, corr value, and reserved value. <br />
 These detailed bin files can be used to trace faults used for a particular image. if num_runs=2, and sample images selected by dataloader is 50, then these updated bin files will consists of 100 rows, where the first 50 rows correspond to the first epoch of experiment and the next 50 rows to the second epoch. 
 - a yaml file containing the used test parameters.
 

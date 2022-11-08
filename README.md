@@ -19,7 +19,7 @@ The core of the tool is the **alficore** component, which provides a test class 
 First create a conda environment to install the list of required libraries
 
 ```
-conda create --f condaenv.yml
+conda create --file condaenv.yml
 ```
 
 ### Minimal example for image classification:

@@ -118,7 +118,7 @@ Finally some example scripts are provided on how to visualize the results in abo
 ```
 python evaluation/obj_det_plot_metrics_all_models.py
 ```
-can be used for this purpose (please call `-h` to see its parameters). The only mandatory parameter is the path to the previously generated json files.  file as a dictionary which then plots the above figures. We provided the above evaluation files as an example and this can be used to extend to compute and plot custom metrics. The results in the above mentioned paper are produced using pytorch-ALFI and is visualised using these evaluation files. To keep things simple for users's initial exploration, the above mentioned evaluation process can be easily reproduced by just running the files without much changes. It is developed to run out of the box for in-built metrics.
+Please call it with parameter `-h` to see its parameters. The only mandatory parameter is the path to the previously generated json files.  file as a dictionary which then plots the above figures. We provided the above evaluation files as an example and this can be used to extend to compute and plot custom metrics. The results in the above mentioned paper are produced using pytorch-ALFI and is visualised using these evaluation files. To keep things simple for users's initial exploration, the above mentioned evaluation process can be easily reproduced by just running the files without much changes. It is developed to run out of the box for in-built metrics.
 
 
 ## General workflow

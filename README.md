@@ -60,7 +60,7 @@ The Pytorchfi module contains the already mentioned modified version of the pyto
 
 ### Alficore
 
-The alficore module contains our wrapper to pytorchfi and the analysis components. The main entry point are the two files `alficore/wrapper/test_error_models_imgclass.py` and `alficore/wrapper/test_error_models_objdet.py`. Please see section [Integration Example](##end-to-end-integration-example) for an example on how to use them.
+The alficore module contains our wrapper to pytorchfi and the analysis components. The main entry point are the two files `alficore/wrapper/test_error_models_imgclass.py` and `alficore/wrapper/test_error_models_objdet.py`. Please see section [Integration Example](#end-to-end-integration-example) for an example on how to use them.
 
 ### Dataloaders
 Current data loader examples focus on image data sets only. Dataloaders are enhanced to allow capturing additional information during fault injection runs. The minimal information stored about each image are directory+filename, height, width and image id. This can be extended to individual needs. For a consistent handling of different datasets each dataset is brought into a json format as used in the CoCo dataset first. An example for converting text based labels to json based labels is presented in the example script `utils/kitti-2_coco_labels.py`. For object detection datasets please take note of the bounding box coordinate encoding that is used in the final json file. The different versions of BB encodings can be found in the file `alficore/dataloader/objdet_baseClasses/boxes.py`. 
@@ -180,7 +180,7 @@ The following test result files are generated:
 
 The files `demo_img_classification.py` and `demo_obj_detection.py` give an example of how to integrate pytorchalfi into a test scenario. The following things need to be prepared in advance:
 - a scenario configuration (see section [Scenario configuration](#scenario-configuration))
-- a model where faults should be injected (see section [Models](#models))
+- a model where faults should be injected
 - a specially prepared dataloader (see section [Dataloaders](#dataloaders))
 
 The scripts takes a number of command line parameters. Run e.g.  `python demo_img_classification.py -h` to see the following help:

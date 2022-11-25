@@ -15,16 +15,36 @@ The [Fig. 1](#Schematic) gives an overview of the structure of pytorch-ALFI.
 The core of the tool is the **alficore** component, which provides a test class that integrates all functionalities. The specifics of the fault injection campaign, such as fault model and number of injected faults, will be configured in the **scenario configuration** component. The **pytorchfi** component will take care of the fault injection execution. Alficore further provides multiple optional functionalities, in form of the components **Dataloaders** (provide a selection of simple-to-use dataloaders), **Monitoring** (functions to monitor the occurrence of not-a-number, NaN, or infinity, Inf, values), **Evaluation** (calculate SDC or DUE rates), and **Visualization** (plot key results, currently only for object detection). A detailed description of the workflow can be found in the next sections. To run a minimal example, the following demo scripts can be used.
 
 
+### Setup
+First create a conda environment to install the list of required libraries. 
+
+```
+conda create --file condaenv.yml
+```
+This will create a conda environment (pytorchALFI)
+
+Activate the environment using
+
+```
+conda activate pytorchALFI
+```
+Then install the python libraries required by our code using the following command
+
+```
+pip install -r requirements.txt
+```
+
 ### Minimal example for image classification:
 This script runs a classification example of the model LeNet-5 on the MNIST dataset, injecting one neuron fault per image:
 ```
 python demo_img_classification.py
 ```
-You will get the results saved in a folder ```<path to result files>``` (see console print for exact location). For subsequent evaluation, enter this path in the evaluation file at evaluation/img_class_eval.py and run it:
+You will get the results saved in a folder ```<path to result files>``` (by default for LeNet mnist example the location will be ./result_files/LeNet_orig_1_trials/neurons_injs/per_batch/imClass_20221107-163929_1_faults_[0,8]_bits/mnist/val/). For subsequent evaluation, enter this path in the evaluation file at evaluation/img_class_eval.py and run it:
  ```
-python evaluation/img_class_eval.py
+python evaluation/img_class_eval.py --res_dir <path to result files>
 ```
-  
+
+ 
 ### Minimal example for object detection:
 This script runs an object detection example of the model Faster-RCNN on the COCO dataset, injecting one neuron fault per image:
 ```

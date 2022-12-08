@@ -140,6 +140,22 @@ python evaluation/obj_det_plot_metrics_all_models.py
 ```
 Please call it with parameter `-h` to see its parameters. The only mandatory parameter is the path to the previously generated json files.  file as a dictionary which then plots the above figures. We provided the above evaluation files as an example and this can be used to extend to compute and plot custom metrics. The results in the above mentioned paper are produced using pytorch-ALFI and is visualised using these evaluation files. To keep things simple for users's initial exploration, the above mentioned evaluation process can be easily reproduced by just running the files without much changes. It is developed to run out of the box for in-built metrics.
 
+<p align="center">
+<!-- ![Schematic](readme_plots_images/plots/corr_metrics/sdc_all_neurons_corr.png "Overview") -->
+<img  src="readme_plots_images/plots/corr_metrics/sdc_all_neurons_corr.png" width="200" />
+</p>
+<figcaption align = "center"><b> Fig. 2: Neuron fault injection SDC results using IVMOD metric </b></figcaption>
+<br/><br/>
+
+- **Video examples of fault injection campaigns (for more details please refer the paper [References [2]](#references))**
+
+<p align="center">
+<!-- ![Schematic](readme_plots_images/lyft_yolov3.gif "Overview") -->
+<img  src="readme_plots_images/lyft_yolov3.gif" width="400" />
+</p>
+<figcaption align = "center"><b> Fig. 3: Example of permanent fault injection results</b></figcaption>
+<br/><br/>
+
 
 ## General workflow
 

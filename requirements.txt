@@ -53,7 +53,7 @@
     plotly==4.14.3
     pluggy==0.13.1
     portalocker==2.5.1
-    protobuf==4.21.3
+    protobuf==4.21.6
     psutil==5.8.0
     ptable==0.9.2
     py==1.10.0

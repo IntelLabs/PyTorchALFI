@@ -64,7 +64,7 @@ data_list = ['yolo_coco', 'yolo_kitti', 'ssd_coco', 'ssd_kitti', 'retina_coco', 
 cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
 
-fig = plt.figure()
+fig = plt.figure(figsize=(8,4))
 ax = fig.gca()
 x_labels = ["original (CPU)", "quantiles red (CPU)", "quantiles full (CPU)", 'fmap trace (CPU)']
 x_labels2 = ["original (GPU)", "quantiles red (GPU)", "quantiles full (GPU)", 'fmap trace (GPU)']

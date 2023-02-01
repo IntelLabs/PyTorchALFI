@@ -41,7 +41,7 @@ class MNIST_dataloader():
             self.dataset = datasets.MNIST('./data', train=False, download=True, transform=self.transform)
         if self.sampleN is not None:
             self.dataset = torch.utils.data.Subset(self.dataset, np.random.choice(len(self.dataset), self.sampleN, replace=False))
-        self.data_loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        self.data_loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=self.shuffle, num_workers=self.num_workers)
 
         self.classes = ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
         self.datasetfp = None
@@ -59,9 +59,9 @@ class MNIST_dataloader():
         if self.datagen_iter_cnt < self.dataset_length:
             self.data_incoming = True
             self.images, self.labels = self.datagen_iter.next()
+            self.image_path = [self._image_path for i in range(len(self.images))]
             self.curr_batch_size = len(self.images)
             self.datagen_iter_cnt = self.datagen_iter_cnt + self.curr_batch_size
-            self.image_path = [i for i in np.arange(self.datagen_iter_cnt - self.curr_batch_size, self.datagen_iter_cnt)]
             self.images = self.images.to(self.device)
             self.labels = self.labels.to(self.device)
             if self.datagen_iter_cnt == self.dataset_length: # added to stop repeat of last batch of images

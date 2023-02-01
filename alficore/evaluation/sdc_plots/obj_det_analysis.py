@@ -1,8 +1,7 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 import concurrent.futures
 import concurrent
+import argparse
+from genericpath import exists
 import json
 import logging.config
 import os
@@ -10,14 +9,50 @@ from posixpath import dirname
 import sys
 import numpy as np
 import torch
+from torch.multiprocessing import Process
+from torchvision import transforms, models
 from tqdm import tqdm
 from os.path import dirname as up
+from collections import namedtuple
+
+## comment this for debug
+sys.path.append(up(up(up(os.getcwd()))))
+
+## uncomment this for debug
 sys.path.append(os.getcwd())
+
+# from alficore.dataloader.coco_loader import coco_loader
+from alficore.wrapper.ptfiwrap import ptfiwrap
+# from util.helper_functions import getdict_ranger, get_savedBounds_minmax
+# from util.evaluate import extract_ranger_bounds
+# from util.ranger_automation import get_Ranger_protection
+import pandas as pd
+from typing import Dict, List, Optional, Tuple
+from alficore.models.yolov3.darknet import Darknet
+from alficore.wrapper.test_error_models_objdet import TestErrorModels_ObjDet
+from alficore.dataloader.objdet_baseClasses.common import pytorchFI_objDet_inputcheck, pytorchFI_objDet_outputcheck, pad_to_square, resize
+
+from os.path import dirname as up
+sys.path.append(up(up(up(os.getcwd()))))
+
+# from resiliency_methods.Ranger import Ranger, Ranger_Clip, Ranger_FmapRescale, Ranger_BackFlip, Ranger_FmapAvg
+from alficore.dataloader.objdet_baseClasses.boxes import Boxes, BoxMode
+from alficore.dataloader.objdet_baseClasses.instances import Instances
+from alficore.models.yolov3.utils import non_max_suppression, rescale_boxes
+from alficore.evaluation.visualization.visualization import Visualizer, ColorMode
+
+
+from alficore.dataloader.objdet_baseClasses.catalog import MetadataCatalog
+from alficore.dataloader.ppp_loader import PPP_obj_det_dataloader
+# from alficore.dataloader.kitti2D_loader import Kitti2D_dataloader
+import pickle
+# from darknet_Ranger import Darknet_Ranger
 
 from alficore.evaluation.sdc_plots.obj_det_evaluate_jsons import *
 import csv
 import json 
 import matplotlib.pyplot as plt
+from copy import deepcopy
 import os
 from pathlib import Path
 
@@ -103,6 +138,43 @@ def get_map_ap50_infnan(folder_path, typ='ranger', folder_num=0):
 
     return orig_ap, orig_ap50, orig_ranger_ap, orig_ranger_ap50, corr_ap, corr_ap50, ranger_corr_ap, ranger_corr_ap50, nr_epochs, corr_nan_inf_flags, ranger_corr_nan_inf_flags
 
+
+
+# def get_map_ap50_infnan(folder_path):
+#
+#
+#     list_subfolders_with_paths = [f.path for f in os.scandir(folder_path + '/corr_model/epochs/') if f.is_dir()]
+#     nr_epochs = len(list_subfolders_with_paths)
+#
+#     orig = load_json_indiv(folder_path + '/orig_model/epochs/0/coco_results_orig_model_0_epoch.json') 
+#     orig_ap = orig["AP"]
+#     orig_ap50 = orig["AP50"]
+#
+#     corr_ap = []
+#     corr_ap50 = []
+#     nan_inf_flags = []
+#
+#     for n in range(nr_epochs):
+#         corr = load_json_indiv(folder_path + '/corr_model/epochs/' + str(n) +'/coco_results_corr_model_' +str(n) + '_epoch.json') 
+#         corr_ap.append(corr["AP"])
+#         corr_ap50.append(corr["AP50"])
+#
+#         infnan = read_csv(folder_path + '/corr_model/epochs/' + str(n) +'/inf_nan_corr.csv') 
+#         infnan = infnan[1:] #remover header
+#         nans = [n[0] == 'True' for n in infnan]
+#         nan_infs = [n[1] == 'True' for n in infnan]
+#         # print('Nans', np.sum(nans), 'Nans or infs', np.sum(nan_infs))
+#         nan_inf_flags.append(nan_infs)
+#
+#     print('map', orig_ap)
+#     print('ap50', orig_ap50)
+#     print('map corr', np.mean(corr_ap), np.std(corr_ap)*1.96/np.sqrt(len(corr_ap)))
+#     print('ap50 corr', np.mean(corr_ap50), np.std(corr_ap50)*1.96/np.sqrt(len(corr_ap50)))
+#     # print('percentage of nan/infs encountered:', np.sum(np.sum(nan_inf_flags))/np.size(nan_inf_flags))
+#
+#     return orig_ap, orig_ap50, corr_ap, corr_ap50, nr_epochs, nan_inf_flags
+
+
 def plot_hist(list1, list2, yname, sv_name):
     fig, ax = plt.subplots()
 
@@ -151,9 +223,9 @@ def plot_hist_no_avg(orig_sdc, sv_name):
     plt.show()
 
 
-def get_mask_any_change_orig_corr(dct_sdc, typ = 'no_resil'):
+def get_mask_any_change_orig_corr(dct_sdc, typ = 'no_ranger'):
     # Filter only by those where tp, fp or fn changes ------------------------
-    if typ == 'no_resil':
+    if typ == 'no_ranger':
         tps_orig = [n["orig"]["tp"] for n in dct_sdc]
         fps_orig = [n["orig"]["fp"] for n in dct_sdc]
         fns_orig = [n["orig"]["fn"] for n in dct_sdc]
@@ -161,7 +233,7 @@ def get_mask_any_change_orig_corr(dct_sdc, typ = 'no_resil'):
         tps_corr = [n["corr"]["tp"] for n in dct_sdc]
         fps_corr = [n["corr"]["fp"] for n in dct_sdc]
         fns_corr = [n["corr"]["fn"] for n in dct_sdc]
-    elif typ != 'no_resil':
+    elif typ is not 'no_ranger':
         tps_orig = [n["orig_resil"]["tp"] for n in dct_sdc]
         fps_orig = [n["orig_resil"]["fp"] for n in dct_sdc]
         fns_orig = [n["orig_resil"]["fn"] for n in dct_sdc]
@@ -194,23 +266,44 @@ def plot_tpfpfn(dct_sdc, flts_del, sv_name):
     fns = np.array(fns_corr) - np.array(fns_orig)
 
 
+    # # mask_any_change = np.logical_or(np.logical_or(fns != 0, tps != 0), fps != 0)
+    # # print('In', sv_name, ': Filtered only changing samples from', len(tps_orig), 'to', np.sum(mask_any_change))
+    # # # mask_any_change = get_mask_any_change(dct_sdc)
+    # # tps = tps[mask_any_change]
+    # # fps = fps[mask_any_change]
+    # # fns = fns[mask_any_change]
+    # # faults = flts_del[:, mask_any_change]
+
     faults = flts_del
     bpos = faults[6,:]
     
 
     x_ind = np.arange(len(tps))
 
+    # Get plotting boundaries: -----------------------------------------    
+    # tps_pos = [n if n > 0 else 0 for n in tps]
+    # # if np.sum(tps_pos) > 0:
+    # #     print('stop')
+    # #     a = np.where(np.array(tps_pos) > 0)[0]
+    # #     dct_sdc_filt = np.array(dct_sdc)[mask_any_change].tolist()
+
     # tps_neg = [n if n < 0 else 0 for n in tps]
     tps_pos = [max(n,0) for n in tps]
     tps_neg = [min(n,0) for n in tps]
-    bottom1 = [tps_pos[n] if fns[n] >= 0 else tps_neg[n] for n in range(len(tps))]
+    # bottom1 = [tps_pos[n] if fps[n] >= 0 else tps_neg[n] for n in range(len(tps))] 
+    bottom1 = [tps_pos[n] if fns[n] >= 0 else tps_neg[n] for n in range(len(tps))] 
+
+    # tps_fps_pos = [bottom1[n] + fps[n] if fps[n] >= 0 else 0 for n in range(len(fps))]
+    # tps_fps_neg = [bottom1[n] + fps[n] if fps[n] < 0 else 0 for n in range(len(fps))] 
     tps_fns_pos = [max([tps_pos[n], bottom1[n] + fns[n], 0]) for n in range(len(fns))]
-    tps_fns_neg = [min([tps_neg[n], bottom1[n] + fns[n], 0]) for n in range(len(fns))]
-    bottom2 = [tps_fns_pos[n] if fps[n] >= 0 else tps_fns_neg[n] for n in range(len(fps))]
+    tps_fns_neg = [min([tps_neg[n], bottom1[n] + fns[n], 0]) for n in range(len(fns))] 
+    # bottom2 = [tps_fps_pos[n] if fns[n] >= 0 else tps_fps_neg[n] for n in range(len(fns))] 
+    bottom2 = [tps_fns_pos[n] if fps[n] >= 0 else tps_fns_neg[n] for n in range(len(fps))] 
 
     width = 1.
 
-    fig, ax = plt.subplots()
+    # Plot corrupted images vs tps, fps, fns change
+    fig, ax = plt.subplots()    
     plt.bar(x_ind, tps, width, color='r') #tps starting from 0
     plt.bar(x_ind, fns, width, bottom=np.array(bottom1), color='g')
     plt.bar(x_ind, fps, width, bottom=np.array(bottom2), color='b')
@@ -241,6 +334,14 @@ def plot_lay_tpfpfn(dct_sdc, flts_del, sv_name, injection_type, plot_ind = False
     tps = np.array(tps_corr) - np.array(tps_orig)
     fps = np.array(fps_corr) - np.array(fps_orig)
     fns = np.array(fns_corr) - np.array(fns_orig)
+
+
+    # # mask_any_change = np.logical_or(np.logical_or(fns != 0, tps != 0), fps != 0)
+    # # # mask_any_change = get_mask_any_change(dct_sdc)
+    # # tps = tps[mask_any_change]
+    # # fps = fps[mask_any_change]
+    # # fns = fns[mask_any_change]
+    # # faults = flts_del[:, mask_any_change]
 
     faults = flts_del
     bpos = faults[6,:]
@@ -307,8 +408,21 @@ def plot_bpos_tpfpfn(dct_sdc, flts_del, sv_name, injection_type, plot_ind = Fals
     fps = np.array(fps_corr) - np.array(fps_orig)
     fns = np.array(fns_corr) - np.array(fns_orig)
 
+
+    # mask_any_change = np.logical_or(np.logical_or(fns != 0, tps != 0), fps != 0)
+    # # mask_any_change = get_mask_any_change(dct_sdc)
+    # tps = tps[mask_any_change]
+    # fps = fps[mask_any_change]
+    # fns = fns[mask_any_change]
+    # faults = flts_del[:, mask_any_change]
+
     faults =flts_del
     bpos = faults[6,:]
+    # if injection_type == "neurons":
+    #     lays = faults[1,:]
+    # elif injection_type == "weights":
+    #     lays = faults[0,:]
+
 
     m_tps, err_tps = [], []
     m_fps, err_fps = [], []
@@ -397,6 +511,9 @@ def plot_lay_bpos_tpfpfn(dct_sdc, flts_del, sv_name, injection_type):
 
             sel = np.logical_and(bpos == x, lays==y)
             if sel.any():
+                # if y > 100:
+                #     x= 0
+                # print('bit', x, 'lay', y, np.sum(bpos == x), " ", np.sum(lays == y), " ", np.sum(sel), len(tps[sel]), len(fps[sel]), len(fns[sel]))
                 tps_new[x,y] = np.mean(tps[sel]) #avg of diff in tp diff
                 fps_new[x,y] = np.mean(fps[sel]) #avg of diff in fp diff
                 fns_new[x,y] = np.mean(fns[sel]) #avg of diff in fn diff
@@ -404,6 +521,7 @@ def plot_lay_bpos_tpfpfn(dct_sdc, flts_del, sv_name, injection_type):
     mn, mx = min([min(tps), min(fps), min(fns)]), max([max(tps), max(fps), max(fns)])
 
     fig, ax = plt.subplots(3,1)
+    # a = np.random.random((16, 16))
     p1 = ax[0].imshow(tps_new, vmin=mn, vmax=mx, cmap='hot', interpolation='nearest')
     ax[0].set_title("tp")
     fig.colorbar(p1, ax=ax[0])
@@ -416,6 +534,7 @@ def plot_lay_bpos_tpfpfn(dct_sdc, flts_del, sv_name, injection_type):
     ax[2].set_title("fn")
     fig.colorbar(p3, ax=ax[2])
 
+    # plt.legend(['tp', 'fp', 'fn'], loc="upper right")
     plt.xlabel("Layers")
     plt.ylabel("Bits")
 
@@ -423,6 +542,21 @@ def plot_lay_bpos_tpfpfn(dct_sdc, flts_del, sv_name, injection_type):
     print('saved as ', sv_name)
     plt.show()
 
+
+
+
+    # fig, ax = plt.subplots()
+    # if plot_ind:    
+    #     plt.scatter(lays, tps, color='r', s=2.2)
+    #     plt.scatter(lays, fps, color='b', s=2.1)
+    #     plt.scatter(lays, fns, color='g', s=2.)
+    # else:
+    #     ll = np.arange(0, max(lays)+1)
+    #     ax.errorbar(ll, m_tps, yerr=err_tps, fmt='-o', color='r', markersize=3)
+    #     ax.errorbar(ll, m_fps, yerr=err_fps, fmt='-o', color='b', markersize=3)
+    #     ax.errorbar(ll, m_fns, yerr=err_fns, fmt='-o', color='g', markersize=3)
+
+    
 def plot_sdc_diff_vs_bpos(sv_name, orig_sdc, corr_sdc, bpos, bits):
     fig, ax = plt.subplots(1,1)
 
@@ -525,7 +659,7 @@ def evaluation(folder_path, save_name, iou_thresh=0.5, filter_ooI=True, eval_mod
 
 
 
-def extract_sdc_due(json_path, flt_type, folder_path, faults_path, save_as_name, typ='no_resil', folder_num=0):
+def extract_sdc_due(json_path, flt_type, folder_path, faults_path, save_as_name, typ='no_ranger', folder_num=0):
 
     # # Load + analyse data ----------------------------------------------------------------------------------
     # Takes care of images that are not annotated
@@ -555,11 +689,11 @@ def extract_sdc_due(json_path, flt_type, folder_path, faults_path, save_as_name,
     bpos = bpos[:nr_samples*nr_epochs]
     lays = lays[:nr_samples*nr_epochs]
 
-    corr_mask_nan_inf, corr_mask_nan_inf_flat, corr_mask_any_change_and_no_naninf, corr_mask_any_change_and_no_naninf_flat = get_nan_inf_masks(corr_due, dct_all, nr_samples, nr_all, typ="no_resil")
+    corr_mask_nan_inf, corr_mask_nan_inf_flat, corr_mask_any_change_and_no_naninf, corr_mask_any_change_and_no_naninf_flat = get_nan_inf_masks(corr_due, dct_all, nr_samples, nr_all, typ="no_ranger")
     corr_nr_imgs_due = [int(np.sum(x)) for x in corr_due]
     corr_nr_imgs_sdc = [int(np.sum(x)) for x in corr_mask_any_change_and_no_naninf]
 
-    if typ != 'no_resil':
+    if typ != 'no_ranger':
 
         resil_corr_mask_nan_inf, resil_corr_mask_nan_inf_flat, resil_corr_mask_any_change_and_no_naninf, resil_corr_mask_any_change_and_no_naninf_flat = get_nan_inf_masks(resil_corr_due, dct_all, nr_samples, nr_all, typ=typ)
         resil_corr_nr_imgs_due = [int(np.sum(x)) for x in resil_corr_due]
@@ -600,7 +734,7 @@ def extract_sdc_due(json_path, flt_type, folder_path, faults_path, save_as_name,
     tpfpfn_due_orig = [n ["orig"] for n in dct_due_filt]
     tpfpfn_due_corr = [n ["corr"] for n in dct_due_filt]
 
-    if typ != 'no_resil':
+    if typ != 'no_ranger':
         # DUE: -------------------------------------------
         resil_dct_due_filt = np.array(dct_all)[resil_corr_mask_nan_inf_flat].tolist() #only those from list that have due
         resil_flts_due_filt = flts_all[:, resil_corr_mask_nan_inf_flat]
@@ -635,7 +769,7 @@ def extract_sdc_due(json_path, flt_type, folder_path, faults_path, save_as_name,
         tpfpfn_due_resil_orig = [n ["orig"] for n in resil_dct_due_filt]
         tpfpfn_due_resil_corr = [n ["corr"] for n in resil_dct_due_filt]
 
-    if typ != 'no_resil':
+    if typ != 'no_ranger':
         metrics = {"sdc": {"orig_sdc": orig_sdc_filt2, "resil_sdc":resil_orig_sdc_filt2, "corr_sdc": corr_sdc_filt2, "resil_corr_sdc": resil_corr_sdc_filt2, "tpfpfn_orig": tpfpfn_sdc_orig, "tpfpfn_resil_orig": tpfpfn_sdc_resil_orig,
          "tpfpfn_corr": tpfpfn_sdc_corr, "tpfpfn_resil_corr": tpfpfn_sdc_resil_corr}, 
          "due": {"orig_due": orig_due_filt, "resil_due": resil_orig_due_filt, "corr_due": corr_due_filt, "resil_corr_due": resil_corr_due_filt, 
@@ -658,7 +792,7 @@ def extract_sdc_due(json_path, flt_type, folder_path, faults_path, save_as_name,
 
 
 
-def get_nan_inf_masks(corr_due, dct_all, nr_samples, nr_all, typ='no_resil'):
+def get_nan_inf_masks(corr_due, dct_all, nr_samples, nr_all, typ='no_ranger'):
     # Filter by naninfs and sdc:
     mask_no_nan_inf = [np.logical_not(np.array(n)) for n in corr_due]
     mask_no_nan_inf_flat = np.logical_not(np.array(flatten_list(corr_due)))
@@ -678,10 +812,13 @@ def get_nan_inf_masks(corr_due, dct_all, nr_samples, nr_all, typ='no_resil'):
 
     return mask_nan_inf, mask_nan_inf_flat, mask_any_change_and_no_naninf, mask_any_change_and_no_naninf_flat
 
-def get_fault_path(folder_path, typ='no_resil'):
+
+
+
+def get_fault_path(folder_path, typ='no_ranger'):
     filelist = list(Path(folder_path).glob('**/*fault_locs.bin'))
 
-    if typ in ['no_resil', 'no_resil'] :
+    if typ == 'no_ranger':
         for n in range(len(filelist)):
             if 'inj_ranger' not in str(filelist[n]) and 'updated' in str(filelist[n]):
                 return filelist[n]
@@ -689,47 +826,95 @@ def get_fault_path(folder_path, typ='no_resil'):
         for n in range(len(filelist)):
             if 'updated' not in str(filelist[n]):
                 return filelist[n]
-    elif typ != None:
+    elif type is not None:
         for n in range(len(filelist)):
             if 'inj_{}'.format(typ) in str(filelist[n]):
                 return filelist[n]
     else:
         return filelist[0]
 
-def obj_det_analysis_func(folder_path, folder_num=0, typ='ranger'):
+    
+def obj_det_analysis(folder_path, folder_num=0, typ='ranger'):
     faults_path = get_fault_path(folder_path, typ)
     flt_type = "neurons" if "neurons" in folder_path else "weights" if "weights" in folder_path else None
     suffix = '_ranger' #'_avg' # '_ranger'
     suffix = '_{}'.format(typ)
-    model_name = [split for split in folder_path.split('/') if '_trials' in split][0]
-    model_name = "_".join(model_name.split('_')[:-2])
-    dataset_name = os.path.split(folder_path)[-1]
+    model_name = "retina" if "retina" in folder_path else "yolov3_ultra" if "yolov3_ultra" in folder_path else None
+    dataset_name = "coco2017" if "coco2017" in folder_path else "kitti" if "kitti" in folder_path else "lyft" if "lyft" in folder_path else None
+    # dataset_name = "kitti" 
     bits = 32
     eval_mode = "iou+class_labels" # "iou+class_labels", "iou"
 
     # Evaluation --------------
     save_name = os.path.join(folder_path, 'sdc_eval', model_name + "_" + dataset_name + "_" + "results_1_" + flt_type + "_backup" + suffix + ".json")
     os.makedirs(os.path.dirname(save_name), exist_ok=True)
-    evaluation(folder_path, save_name, folder_num=folder_num, eval_mode=eval_mode, typ=typ)
+    evaluation(folder_path, save_name, folder_num=folder_num, typ=typ)
 
 
     save_as_name = os.path.join(folder_path, 'sdc_eval', model_name + "_" + dataset_name + "_" + "results_1_" + flt_type + "_images" + suffix + ".json")
     os.makedirs(os.path.dirname(save_as_name), exist_ok=True)
     json_file = extract_sdc_due(save_name, flt_type, folder_path, faults_path, save_as_name, typ=typ, folder_num=folder_num)
 
+    # ddct = load_json_indiv(json_file)
+    # ddct2 = load_json_indiv(save_name)
+
     print("completed analysis for folder {} :{}".format(folder_num, folder_path))
 
-def obj_det_analysis(exp_folder_paths, resil_methods, num_threads=1):
+def main(argv):
 
+    # # RetinaNet + CoCo
+    # folder_path = '/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/retina_50_trials/neurons_injs/per_image/objDet_20220113-184245_1_faults_[0_32]_bits/coco2017/val'
+    # folder_path = '/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/retina_50_trials/weights_injs/per_batch/objDet_20220113-235113_1_faults_[0_32]_bits/coco2017/val'
+
+    # # Yolov3 + CoCo
+    # folder_path = "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials/neurons_injs/per_image/objDet_20220111-002317_1_faults_[0, 31]_bits/coco2017/val"
+    # folder_path = "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials/weights_injs/per_batch/objDet_20220119-005109_1_faults_[0, 31]_bits/coco2017/val"
+
+    # # Yolov3 + Kitti
+    # folder_path = "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials/neurons_injs/per_image/objDet_20220117-020417_1_faults_[0, 31]_bits/kitti/val"
+    # folder_path = "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials/weights_injs/per_batch/objDet_20220117-100427_1_faults_[0, 31]_bits/kitti/val"
+    
+    """
+    ## paper results
+    """
+    folder_paths = [
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/retina_50_trials/neurons_injs/per_image/objDet_20220113-184245_1_faults_[0_32]_bits/coco2017/val",
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/retina_50_trials/weights_injs/per_batch/objDet_20220113-235113_1_faults_[0_32]_bits/coco2017/val"
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/neurons_injs/per_image/objDet_20220212-013556_1_faults_[0_32]/_bits/coco2017/val",
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/weights_injs/per_batch/objDet_20220214-095032_1_faults_[0_32]_bits/coco2017/val",
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/neurons_injs/per_image/objDet_20220213-134550_1_faults_[0_32]_bits/kitti/val",
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/weights_injs/per_batch/objDet_20220213-202846_1_faults_[0_32]_bits/kitti/val",
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/neurons_injs/per_image/objDet_20220206-165457_1_faults_[0_32]_bits/lyft/val"
+                    # "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_50_trials_nwstore/weights_injs/per_batch/objDet_20220206-024503_1_faults_[0_32]_bits/lyft/val"
+                    "result_files/yolov3_1_trials/neurons_injs/per_image/objDet_20221111-161915_1_faults_31_bits/coco"
+                    ]
+    resil_methods = ["ranger"]*len(folder_paths)
+
+    # folder_paths = [
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/retina_10_trials/neurons_injs/per_image/objDet_20220426-150137_1_faults_[0,8]_bits/coco2017/val",
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_10_trials/neurons_injs/per_image/objDet_20220424-202259_1_faults_[0,8]_bits/coco2017/val",
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_10_trials/neurons_injs/per_image/objDet_20220424-202459_1_faults_[0,8]_bits/kitti/val",
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_10_trials/neurons_injs/per_image/objDet_20220426-145541_1_faults_[0,8]_bits/lyft/val",
+
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/retina_10_trials/weights_injs/per_batch/objDet_20220426-133132_1_faults_[0,8]_bits/coco2017/val"
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_10_trials/weights_injs/per_batch/objDet_20220424-201618_1_faults_[0,8]_bits/coco2017/val",
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_10_trials/weights_injs/per_batch/objDet_20220425-193114_1_faults_[0,8]_bits/kitti/val",
+    #                 "/home/qutub/PhD/git_repos/intel_git_repos/pfd_uet/result_files/result_files_paper/yolov3_ultra_10_trials/weights_injs/per_batch/objDet_20220426-164355_1_faults_[0,8]_bits/lyft/val"
+    #                 ]
+    # resil_methods = ["ranger"]*len(folder_paths)
+    # resil_methods = ['ranger', 'ranger', 'ranger', 'ranger', 'clipper', 'clipper', 'clipper', 'clipper']
+    # resil_methods = ['clipper']
+
+    """
+    ## experiment on clipper and DUE correction.
+    """
     try:
-        executor = concurrent.futures.ProcessPoolExecutor(num_threads)
-        futures = [executor.submit(obj_det_analysis_func, exp_folder_path, exp_folder_num, resil_methods[exp_folder_num])
-                for exp_folder_num, exp_folder_path in enumerate(exp_folder_paths)]
+        executor = concurrent.futures.ProcessPoolExecutor(8)
+        futures = [executor.submit(obj_det_analysis, folder_path, folder_num, resil_methods[folder_num])
+                for folder_num, folder_path in enumerate(folder_paths)]
         concurrent.futures.wait(futures)
-    except Exception as e:
-        print(e)
     except KeyboardInterrupt:
         quit = True
 
-# if __name__ == "__main__":
-#     obj_det_analysis(sys.argv)
+if __name__ == "__main__":
+    main(sys.argv)

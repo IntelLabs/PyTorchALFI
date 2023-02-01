@@ -1,0 +1,158 @@
+###############################################
+#  Basic miovision dataloader configuration   #
+###############################################
+
+#################################
+#  Data file static paths       #
+#################################
+train_ground_truth_file: '../../datasets/MIO-TCD-Classification/gt_train.csv'
+root_directory: '../../datasets/MIO-TCD-Classification/'
+# file containing the test image names and random labels which are to be ignored
+test_image_names: '../../datasets/MIO-TCD-Classification/your_results_test.csv'
+# file containing list of validation images and labels which has been classified correctly by the trained resnet50 model
+correct_val_ground_truth_file: '../../datasets/MIO-TCD-Classification/correct_val_mapping_resnet50.csv'
+# correct_val_ground_truth_file: '../../datasets/MIO-TCD-Classification/correct_val_mapping_vgg16.csv'
+
+#################################
+#       Dataset info            #
+#################################
+dataset_name: 'miovision'
+num_classes: 11
+
+#################################
+#  Resnet50 train parameteres   #
+#################################
+# hyper-parameters set as given in
+# https://openaccess.thecvf.com/contenmiovision_data_loadert_cvpr_2017_workshops/w9/papers/Theagarajan_EDeN_Ensemble_of_CVPR_2017_paper.pdf
+# learning_rate: 0.0065
+# momentum: 0.9
+# weight_decay: 0.0004
+# patience: 5
+# rescale_dimension: 100
+# random_seed: 42
+# train_split: 0.8
+# validation_split: 0.2
+# shuffle_dataset: True
+# num_epochs: 100
+# batch_size: 50
+# num_test_images: 10
+
+#################################
+#  VGG16 train parameteres   #
+#################################
+# https://savoirs.usherbrooke.ca/bitstream/handle/11143/11854/Luo_Zhiming_PhD_2018.pdf?sequence=11&isAllowed=y
+learning_rate: 0.001
+weight_decay: 0.0004
+patience: 10
+rescale_dimension: 100
+random_seed: 42
+train_split: 0.8
+validation_split: 0.2
+shuffle_dataset: True
+num_epochs: 100
+batch_size: 250
+num_test_images: 10
+
+#################################
+#     Controlling flags         #
+#################################
+## To evaluate model with validation set below train, evaluate, val_correct flags to be False ##
+train: False # True to train and False to evaluate with validation data
+evaluate: False # flag to check for test data and False to training or test with val set
+val_correct: True # True to work with correctly classified validation data
+separate_correct_val: False # True if user wants to separate correctly classified images from entire validation set, False if not or already done
+train_uniform_class_dist: False
+
+####################################
+# Ranger & Fault injection configs #
+####################################
+generate_ranger_bounds: False
+generate_ranger_bounds_classes: False
+inject_fault: True
+
+#############################
+######## RESNET-50 ##########
+#############################
+# model_name: 'resnet50'
+# ranger_file_name: 'Resnet50_bounds_miovision_train20p_act'
+#############################
+######## VGG-16 #############
+#############################
+model_name: 'vgg16'
+ranger_file_name: 'Vgg16_bounds_miovision_train20p_act'
+#############################
+######## VGG-16 #############
+#############################
+# model_name: 'vgg16_bn'
+# ranger_file_name: 'Vgg16_bn_bounds_miovision_train20p_act'
+
+
+########################################
+# SDC & resil methods analysis configs #
+########################################
+number_of_images_each_class: 100
+train_class_indices_checkpoint: '/miovision_results/resnet50_mio/train_set_class_indices.pkl'
+val_indices_fault_inj_weights_checkpoint: '/miovision_results/val_indices_fault_injection_weights.pkl'
+neuron_inj_class_id: 0
+
+#####################
+## Thesis settings ##
+#####################
+
+##### neurons ######
+
+# fault_type: 'neurons_injs'
+# bit_range: '0-8'
+
+### Single fault experiments
+
+# faults_per_inference: [1]
+# fault_epochs: [300, 500, 700] # resnet50
+# fault_epochs: [300, 700] # vgg16
+
+### Multiple fault experiments
+
+# faults_per_inference: [10]
+# fault_epochs: [600] # resnet50
+# fault_epochs: [1000] # vgg16
+
+##### weights ######
+
+fault_type: 'weights_injs'
+
+### Single fault experiments
+
+# faults_per_inference: [1]
+# fault_epochs: [200, 250, 300, 350, 400, 450, 475, 480, 500, 520, 525, 550] # resnet50
+# fault_epochs: [200, 250, 300, 350, 400, 450, 550] # vgg16
+# fault_epochs: [200, 300] # vgg16
+# bit_range: 'MSB'
+# bit_range: 'MSB/uniform_class'
+
+### Multiple fault experiments
+
+# faults_per_inference: [10]
+# fault_epochs: [200, 300] # resnet50
+# fault_epochs: [500, 600] # vgg16
+# bit_range: '0-8'
+
+####################
+## Paper settings ##
+####################
+
+##### neurons ######
+
+# faults_per_inference: [1, 10]
+# fault_epochs: [100]
+# fault_type: 'neurons_injs'
+# bit_range: '0-8'
+
+##### weights ######
+
+# faults_per_inference: [1, 10]
+# fault_epochs: [200, 300]
+# fault_type: 'weights_injs'
+# bit_range: '0-8'
+
+# bit_range: 'signed_bit'
+# bit_range: '2-8'

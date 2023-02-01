@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 from json import load
 import os
 import contextlib
@@ -11,6 +8,7 @@ import logging
 from fvcore.common.timer import Timer
 from .objdet_baseClasses.catalog import MetadataCatalog
 from .objdet_baseClasses.boxes import BoxMode
+# from alficore.ptfiwrap_utils.helper_functions import TEM_Dataloader_attr
 from alficore.ptfiwrap_utils.helper_functions import TEM_Dataloader_attr
 from random import shuffle
 from .abs_loader import Abstract_Loader
@@ -113,12 +111,26 @@ class Kitti_obj_det_native_dataloader(Abstract_Loader):
         # sort indices for reproducible results
         img_ids = sorted(coco_api.imgs.keys())
         if dl_attr.dl_sampleN:
-            if dl_attr.dl_sampleN <= 1:
+            if dl_attr.dl_sampleN < 1:
                 sampleN = dl_attr.dl_sampleN
             else:
                 sampleN = dl_attr.dl_sampleN/len(img_ids)
             val_split, _ = self.split_data(dataset_len=len(img_ids), sampleN=sampleN, random_sample=dl_attr.dl_random_sample)
-            img_ids = [img_ids[i] for i in val_split]
+            img_ids = [img_ids[i] for i in val_split] 
+        print('Set dataset len to', len(img_ids))
+        
+        # # sort indices for reproducible results - enable only a single image:
+        # img_ids = sorted(coco_api.imgs.keys())
+        # if dl_attr.dl_sampleN:
+        #     if dl_attr.dl_sampleN < 1:
+        #         sampleN = dl_attr.dl_sampleN
+        #     else:
+        #         sampleN = dl_attr.dl_sampleN/len(img_ids)
+        #     val_split, _ = self.split_data(dataset_len=len(img_ids), sampleN=sampleN+10, random_sample=dl_attr.dl_random_sample) #TODO +10 added
+        #     img_ids = [img_ids[i] for i in val_split] 
+        # img_ids = [img_ids[1]] #TODO remove, number 1 is good
+        # print('Set dataset len to', len(img_ids))
+
         if dl_attr.dl_shuffle:
             shuffle(img_ids)
 

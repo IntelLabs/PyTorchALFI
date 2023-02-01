@@ -1,0 +1,63 @@
+dataset_size: 10
+ds_batch_size: 1
+ds_loader_class: imagenet
+ds_location: data/cifar-10-batches-py
+ds_test_size: 1
+inj_policy: per_batch
+layer_types:
+- conv2d
+max_faults_per_image: 1
+modelname: lenet
+num_runs: 1
+ptf_C: 3
+ptf_D: -1
+ptf_H: 370
+ptf_W: 1224
+ptf_batch_size: 20
+rnd_batch: change
+rnd_bit_range:
+- 0
+- 31
+rnd_layer: change
+rnd_layer_weighted: true
+rnd_location: change
+rnd_mode: weights
+rnd_value: change
+rnd_value_bits: 32
+rnd_value_type: bitflip
+run_type: single
+save_fault_file_dir: result_files/
+sourcedev: cuda
+st_C:
+- 0
+- 1
+- 0
+st_H:
+- 3
+- 3
+- 4
+st_K:
+- 1
+- 1
+- 1
+st_W:
+- 0
+- 2
+- 4
+st_batches:
+- -1
+- -1
+- -1
+st_data_location: inline
+st_layers:
+- 1
+- 1
+- 2
+st_mode: weights
+st_value:
+- 1200
+- 30
+- 2000
+st_value_type: number
+state: state/lenet_teststate2.pth
+value_type: random

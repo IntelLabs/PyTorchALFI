@@ -1,17 +1,31 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 import json
 import pandas as pd
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from alficore.dataloader import coco_loader
-
+# from alficore.dataloader import coco_loader
+# from alficore.dataloader.coco_loader import CoCo_obj_det_dataloader
+# from alficore.dataloader.kitti2D_loader import Kitti2D_dataloader
+# from alficore.dataloader.objdet_baseClasses.catalog import MetadataCatalog
 # from visualization_florian import *
 from tqdm import tqdm
 import pickle
+# from alficore.dataloader.objdet_baseClasses.catalog import MetadataCatalog
 from copy import deepcopy
 import os
+
+# def load_jsons(gt_path, orig_path, corr_path):
+#     with open(gt_path) as f:
+#         coco_gt = json.load(f)
+#         f.close()
+#     with open(orig_path) as f:
+#         coco_orig = json.load(f)
+#         f.close()
+#     with open(corr_path) as f:
+#         coco_corr = json.load(f)
+#         f.close()
+
+#     return coco_gt, coco_orig, coco_corr
+
 
 def read_fault_file(file):
         file = open(file, 'rb')
@@ -23,6 +37,45 @@ def load_json_indiv(gt_path):
         coco_gt = json.load(f)
         f.close()
     return coco_gt
+
+
+
+# def load_weights(json_path, faults_path):
+#     """
+#     Averages over epoch since same fault applied here (assumption).
+#     """
+
+#     res_all = load_json_indiv(json_path)
+#     orig_sdc, corr_sdc, resil_orig_sdc, resil_corr_sdc, orig_due, corr_due, resil_orig_due, resil_corr_due, dict_sdc = get_sdc_mean_per_epoch(res_all)
+#     # print('orig_sdc', np.mean(orig_sdc), 'corr_sdc', np.mean(corr_sdc))
+#     print('orig_sdc', np.mean(orig_sdc), 'corr_sdc', np.mean(corr_sdc), 'resil_orig_sdc', np.mean(resil_orig_sdc), 'resil_corr_sdc', np.mean(resil_corr_sdc))
+#     print('orig_due', np.mean(orig_due), 'corr_due', np.mean(corr_due), 'resil_orig_due', np.mean(resil_orig_due), 'resil_corr_due', np.mean(resil_corr_due))
+
+#     # compare to: res_all["faults"]
+#     flts = res_all["faults"]
+#     bpos = [n[6] for n in flts]
+#     lays = [n[0] for n in flts]
+
+#     # Correct unannotated images in faults: -------------------
+#     unann_img_ind_ext = res_all["unannotated_images"]
+
+#     nr_samples = len(bpos) #before foul images are eliminated
+#     nr_epochs = len(res_all["gt"])
+#     used_upto = nr_epochs*nr_samples
+    
+#     bpos = bpos[:used_upto]
+#     lays = lays[:used_upto]
+#     flts_del = flts
+#     if unann_img_ind_ext:
+#         shift = 0
+#         for i in unann_img_ind_ext:
+#             bpos.pop(i-shift) #pops index i
+#             lays.pop(i-shift)
+#             flts_del = np.delete(flts_del, i-shift, 1) #object, axis
+#             shift += 1
+
+#     return orig_sdc, corr_sdc, resil_orig_sdc, resil_corr_sdc, orig_due, corr_due, resil_orig_due, resil_corr_due, flts_del, bpos, lays, dict_sdc
+
 
 def flatten_list(list):
     return [element for sublist in list for element in sublist]
@@ -36,6 +89,22 @@ def load_neurons(json_path, faults_path):
     res_all = load_json_indiv(json_path)
     # print('check', len(res_all["gt"][0]))
     orig_sdc, corr_sdc, resil_orig_sdc, resil_corr_sdc, orig_due, corr_due, resil_orig_due, resil_corr_due, dict_sdc = get_sdc_all(res_all)
+    # orig_sdc_flat = flatten_list(orig_sdc)
+    # corr_sdc_flat = flatten_list(corr_sdc)
+    # # orig_sdc=[element for sublist in orig_sdc for element in sublist]
+    # # corr_sdc=[element for sublist in corr_sdc for element in sublist]
+    # resil_orig_sdc_flat = flatten_list(resil_orig_sdc)
+    # resil_corr_sdc_flat = flatten_list(resil_corr_sdc)
+    # # resil_orig_sdc=[element for sublist in resil_orig_sdc for element in sublist] 
+    # # resil_corr_sdc=[element for sublist in resil_corr_sdc for element in sublist]
+
+    # orig_due=[element for sublist in orig_due for element in sublist]
+    # corr_due=[element for sublist in corr_due for element in sublist]
+    # resil_orig_due=[element for sublist in resil_orig_due for element in sublist]
+    # resil_corr_due=[element for sublist in resil_corr_due for element in sublist]
+
+    # print('orig_sdc (all images, including due)', np.mean(orig_sdc), 'corr_sdc', np.mean(corr_sdc), 'resil_orig_sdc', np.mean(resil_orig_sdc), 'resil_corr_sdc', np.mean(resil_corr_sdc))
+    # print('orig_due', np.mean(orig_due), 'corr_due', np.mean(corr_due), 'resil_orig_due', np.mean(resil_orig_due), 'resil_corr_due', np.mean(resil_corr_due))
 
     # compare to: res_all["faults"]
     flts = read_fault_file(faults_path)
@@ -163,6 +232,13 @@ def get_iou(bb1_dict, bb2_dict):
     elif bm2 == 1: #xywh -> xxyy
         bb2 = {'x1': bb2[0], 'x2': bb2[0] + bb2[2], 'y1': bb2[1] , 'y2': bb2[1] + bb2[3]}
 
+
+    # bb1 = {'x1': bb1[0], 'x2': bb1[0] + bb1[2], 'y1': bb1[1] , 'y2': bb1[1] + bb1[3]}
+    # bb2 = {'x1': bb2[0], 'x2': bb2[0] + bb2[2], 'y1': bb2[1] , 'y2': bb2[1] + bb2[3]}
+    # bb1 = {'x1': bb1[0], 'x2': bb1[2], 'y1': bb1[1] , 'y2': bb1[3]}
+    # bb2 = {'x1': bb2[0], 'x2': bb2[2], 'y1': bb2[1] , 'y2': bb2[3]}
+    # print(bb1['x1'], bb1['x2'], bb1['x1'] < bb1['x2'], bb1['x1'] == bb1['x2'], bb1['x1'] > bb1['x2'])
+
     if True in np.isnan(list(bb1.values())) or True in np.isnan(list(bb2.values())):
         return 0.0
 
@@ -221,6 +297,11 @@ def assign_hungarian_trial(source, target, iou_thresh, **kwargs):
             cost_iou[n][m] = iou
             cost_cls[n][m] = 1 if (source[n]["category_id"]==target[m]["category_id"]) else 0 #1 if classes match otherwise 0
 
+    # Do not add that part (14.12.21), leads to strange fps since next best choice is taken from cost matrix:
+    # off_values = cost < iou_thresh #low iou should not be penalized when looking for assignment, but will be chosen if no better choice
+    # if off_values.any():
+    #     cost[off_values] = 0 #np.Inf but linear_sum_assignment cant handle inf. Overwrites -1 to 0 to make class/oobbox a fair balance
+    
     cost = cost*(-1) #invert because large iou is better. If class does not match or iou < thresh then cost is 0 already.
     row_ind,col_ind=linear_sum_assignment(cost)
     cost = cost*(-1) #invert again to make costs positive (=iou)
@@ -243,6 +324,9 @@ def assign_hungarian_trial(source, target, iou_thresh, **kwargs):
         fp_bbox += np.sum(np.logical_and(np.logical_not(wrong_class), wrong_iou))
         fp_class += np.sum(np.logical_and(wrong_class, np.logical_not(wrong_iou)))
         fp_bbox_class += np.sum(np.logical_and(wrong_class, wrong_iou))
+        # for row, col in zip(row_ind, col_ind):
+        #     if source[row]['category_id'] != target[col]['category_id']:
+        #         fp_bbox_class += 1
 
     # Derive unassigned rows and cols
     row_ind_unassigned = list(set(all_rows) - set(row_ind))
@@ -274,9 +358,14 @@ def assign_hungarian(source, target, iou_thresh, **kwargs):
     cost = cost*(-1) #invert because large iou is better
 
     row_ind,col_ind=linear_sum_assignment(cost)
+    # print('rows', row_ind)#The row index corresponding to the cost matrix
+    # print('cols', col_ind)#The optimally assigned column index corresponding to the row index
+
+
 
     cost = cost*(-1) #invert again to make costs positive (=iou)
-
+    # print('costs', cost[row_ind,col_ind])# Extract the element where the optimal assigned column index of each row index is located to form an array
+    # print('costs overall', cost[row_ind,col_ind].sum())#array sum
     all_rows = np.arange(cost.shape[0])
     all_cols = np.arange(cost.shape[1])
     fp_bbox = len(list(set(all_rows) - set(row_ind)))
@@ -296,6 +385,9 @@ def assign_hungarian(source, target, iou_thresh, **kwargs):
 
     if check_class_labels == True:
         for row, col in zip(row_ind, col_ind):
+            # print(row, col)
+            # print(source[row]['category_id'])
+            # print(target[col]['category_id'])
             if source[row]['category_id'] != target[col]['category_id']:
                 print('Category id mismatch!!!')
                 print(source[row]['category_id'])
@@ -438,6 +530,44 @@ def add_image_dims(coco_labels_grouped, coco_orig_grouped, coco_corr_grouped, co
 
     return coco_labels_grouped, coco_orig_grouped, coco_corr_grouped, coco_orig_resil_grouped, coco_corr_resil_grouped
 
+# Alternative: drop out of bound boxes:
+# def filter_out_of_image_boxes(coco_pred_grouped_n, bbox_mode):
+#     """
+#     Removes from list those bounding boxes that are out of the image.
+#     also happens for orig without faults?! Adjust filter!
+#     """
+#     if len(coco_pred_grouped_n) == 0:
+#         return coco_pred_grouped_n
+
+#     bboxes = [n["bbox"] for n in coco_pred_grouped_n]
+#     w,h = coco_pred_grouped_n[0]["image_width"], coco_pred_grouped_n[0]["image_height"]
+#     mask_in_bounds = []
+#     for n in bboxes:
+
+#         if bbox_mode == 0: #xyxy
+#             if (n[0] < 0 or n[0] > w) or (n[2] < 0 or n[2] > w) or (n[1] < 0 or n[1] > h) or (n[3] < 0 or n[3] > h) or n[0] > n[2] or n[1] > n[3] or \
+#                 np.any(np.isnan(n)) : # any corner outside of image
+#                 print('CHECK: pic dimensions exceeded or wrong order: ', n, w, h)
+#                 mask_in_bounds.append(False)
+#             else:
+#                 mask_in_bounds.append(True)
+
+#         elif bbox_mode == 1: #xywh
+#             if (n[0] < 0 or n[0] > w) or (n[0] + n[2] < 0 or n[0] + n[2] > w) or (n[1] < 0 or n[1] > h) or (n[1] + n[3] < 0 or n[1] + n[3] > h) or n[2] < 0 or n[3] < 0 or \
+#                 np.any(np.isnan(n)) or np.any(np.isnan([n[0]+n[2], n[1]+n[3]])): # any corner outside of image
+#                 print('CHECK: pic dimensions exceeded or wrong order: ', n, w, h)
+#                 mask_in_bounds.append(False)
+#             else:
+#                 mask_in_bounds.append(True)
+
+#         # Alternative conditions:
+#         # if (n[0] < 0 and n[2] < 0) or (n[0] > w and n[2] > w) or (n[1] < 0 and n[3] < 0) or (n[1] > h and n[3] > h): # bbox fully outside of image
+        
+#     print('before:', len(bboxes), 'after ooI filter:', len(np.array(coco_pred_grouped_n)[np.array(mask_in_bounds)].tolist()))
+#     return np.array(coco_pred_grouped_n)[np.array(mask_in_bounds)].tolist()
+
+
+
 def filter_out_of_image_boxes(coco_pred_grouped_n, bbox_mode):
     """
     Clips those bounding boxes that are out of the image.
@@ -466,6 +596,8 @@ def filter_out_of_image_boxes(coco_pred_grouped_n, bbox_mode):
 def clamp(x, smallest, largest):
     return max(smallest, min(x, largest))
 
+
+
 def find_non_annotated_images(coco_gt):
         """
         Returns:
@@ -490,6 +622,7 @@ def find_non_annotated_images(coco_gt):
         valid_inds = np.sort(list(set(index_list) ^ set(all_inds)))
 
         return index_list, list_nr_images, valid_inds
+
 
 def eval_epoch(epoch_nr, folder_path, iou_thresh, metadata, nan_infs, filter_ooI=True, eval_mode="iou+class_labels", typ='ranger', folder_num=0):
     """
@@ -584,6 +717,9 @@ def eval_epoch(epoch_nr, folder_path, iou_thresh, metadata, nan_infs, filter_ooI
 
     return results, index_list
 
+
+
+
 def eval_experiment(epochs, iou_thresh, folder_path, save_name, metadata, nan_infs, filter_ooI, eval_mode, typ='ranger', folder_num=0):
     """
     output: dictionary (also saved) with keys gt, orig, corr, ... , faults.
@@ -603,6 +739,9 @@ def eval_experiment(epochs, iou_thresh, folder_path, save_name, metadata, nan_in
         if results_one_epoch["orig_resil"] != []:
             results_all_epochs["orig_resil"].append(results_one_epoch["orig_resil"])
             results_all_epochs["corr_resil"].append(results_one_epoch["corr_resil"])
+        # flts = [int(n) for n in list(faults[:,epoch_nr])] #need to convert from int64 as it gives problem in dump json. First fault in epoch.
+        # results_all_epochs["faults"].append(flts)
+
 
     # Get list of unannotated images (indices extended to all epochs): 
     nr_samples = len(nan_infs[0][0]) #10 #Only relevant if there are not annotated images
@@ -618,6 +757,275 @@ def eval_experiment(epochs, iou_thresh, folder_path, save_name, metadata, nan_in
         json.dump(results_all_epochs, outfile) 
 
     return results_all_epochs, unann_img_ind_ext
+
+
+
+
+# def get_sdc_mean_per_epoch(res_all):
+#     "Averages per epoch and appends to list"
+
+#     orig_sdc_all = []
+#     corr_sdc_all = []
+#     resil_orig_sdc_all = []
+#     resil_corr_sdc_all = []
+
+
+#     orig_due_all = []
+#     corr_due_all = []
+#     resil_orig_due_all = []
+#     resil_corr_due_all = []
+
+#     if res_all["orig_resil"] == [] or res_all["corr_resil"]==[]:
+#         resil = False
+#     else:
+#         resil = True
+
+#     # dct_save = []
+#     dct_item = {"id": 0, "orig": {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None}, \
+#         'corr': {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None}, \
+#         'orig_resil': {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None},\
+#         'corr_resil': {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None}}
+
+#     def fill_dct_item(dct_item, res_all, ep, im, cat):
+
+#         dct_item["id"] = res_all["gt"][ep][im]["id"] #save image id
+
+#         dct_item[cat]["tp"] = len(res_all[cat][ep][im]["tp"])
+#         dct_item[cat]["fn"] = len(res_all[cat][ep][im]["fn"])
+#         dct_item[cat]["fp"] = len(res_all[cat][ep][im]["fp"])
+        
+#         dct_item[cat]["fp_bbox"] = res_all[cat][ep][im]["fp_bbox"]
+#         dct_item[cat]["fp_class"] = res_all[cat][ep][im]["fp_class"]
+#         dct_item[cat]["fp_bbox_class"] = res_all[cat][ep][im]["fp_bbox_class"]
+
+#         dct_item[cat]["nan_inf"] = res_all[cat][ep][im]["nan_inf"]
+#         return dct_item
+
+#     for ep in range(len(res_all["gt"])):
+#         # ep = 0
+#         # print('epoch', ep)
+#         # flt = res_all["faults"][ep]
+#         # --- Meaning for WEIGHT injection: --- #
+#         # 1. layer (everywhere)
+#         # 2. Kth filter (everywhere)
+#         # 3. channel(used in: conv2d, conv3d)
+#         # 4. depth (used in: conv3d)
+#         # 5. height (everywhere)
+#         # 6. width (everywhere)
+#         # 7. value (everywhere)
+
+#         # --- Meaning for NEURON injection: --- #
+#         # 1. batchnumber (used in: conv2d,conv3d)
+#         # 2. layer (everywhere)
+#         # 3. channel (used in: conv2d,conv3d)
+#         # 4. depth (used in: conv3d)
+#         # 5. height (everywhere)
+#         # 6. width (everywhere)
+#         # 7. value (everywhere)
+
+#         orig_sdc_ep = []
+#         corr_sdc_ep = []
+#         resil_orig_sdc_ep = []
+#         resil_corr_sdc_ep = []
+#         orig_due_ep = []
+#         corr_due_ep = []
+#         resil_orig_due_ep = []
+#         resil_corr_due_ep = []
+
+#         dct_save = []
+
+#         for im in range(len(res_all["orig"][ep])):
+#             # true_obj = res_all["gt"][ep][im]["tp"]
+
+#             tp = len(res_all["orig"][ep][im]["tp"])
+#             fp = len(res_all["orig"][ep][im]["fp"])
+#             fn = len(res_all["orig"][ep][im]["fn"])
+#             orig_sdc = (fp + fn)/(2*tp + fp + fn)
+
+#             tp = len(res_all["corr"][ep][im]["tp"])
+#             fp = len(res_all["corr"][ep][im]["fp"])
+#             fn = len(res_all["corr"][ep][im]["fn"])
+#             corr_sdc = (fp + fn)/(2*tp + fp + fn)
+
+#             if resil:
+#                 tp = len(res_all["orig_resil"][ep][im]["tp"])
+#                 fp = len(res_all["orig_resil"][ep][im]["fp"])
+#                 fn = len(res_all["orig_resil"][ep][im]["fn"])
+#                 resil_orig_sdc = (fp + fn)/(2*tp + fp + fn)
+
+#                 tp = len(res_all["corr_resil"][ep][im]["tp"])
+#                 fp = len(res_all["corr_resil"][ep][im]["fp"])
+#                 fn = len(res_all["corr_resil"][ep][im]["fn"])
+#                 resil_corr_sdc = (fp + fn)/(2*tp + fp + fn)
+#             else:
+#                 resil_orig_sdc = None
+#                 resil_corr_sdc = None
+
+
+#             orig_sdc_ep.append(orig_sdc)
+#             corr_sdc_ep.append(corr_sdc)
+#             resil_orig_sdc_ep.append(resil_orig_sdc)
+#             resil_corr_sdc_ep.append(resil_corr_sdc)
+
+#         orig_sdc, corr_sdc, = np.mean(orig_sdc_ep), np.mean(corr_sdc_ep)
+#         if resil:
+#             resil_orig_sdc, resil_corr_sdc = np.mean(resil_orig_sdc_ep), np.mean(resil_corr_sdc_ep)
+#         else:
+#             resil_orig_sdc, resil_corr_sdc = None, None
+#         # print('fault', flt, orig_sdc, corr_sdc)
+#         orig_sdc_all.append(orig_sdc)
+#         corr_sdc_all.append(corr_sdc)
+#         resil_orig_sdc_all.append(resil_orig_sdc)
+#         resil_corr_sdc_all.append(resil_corr_sdc)
+
+
+#     return orig_sdc_all, corr_sdc_all, resil_orig_sdc_all, resil_corr_sdc_all, orig_due_all, corr_due_all, resil_orig_due_all, resil_corr_due_all, dct_save
+
+
+# def get_sdc_mean_per_epoch(res_all):
+#     """
+#     Calculates tp, fp, fn and resulting sdc, due.
+#     Raw tp, fp, fn are saved in dict for transparency.
+#     Appends everything WITH epoch average.
+#     """
+#     orig_sdc_all = []
+#     corr_sdc_all = []
+#     resil_orig_sdc_all = []
+#     resil_corr_sdc_all = []
+
+#     orig_due_all = []
+#     corr_due_all = []
+#     resil_orig_due_all = []
+#     resil_corr_due_all = []
+
+#     if res_all["orig_resil"] == [] or res_all["corr_resil"]==[]:
+#         resil = False
+#     else:
+#         resil = True
+
+
+#     dct_save = []
+#     dct_item = {"id": 0, "orig": {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None}, \
+#         'corr': {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None}, \
+#         'orig_resil': {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None},\
+#         'corr_resil': {'tp': 0, 'fp': 0, 'fn': 0, 'fp_bbox': 0, 'fp_class': 0, 'fp_bbox_class':0, 'nan_inf': None}}
+
+#     def fill_dct_item(dct_item, res_all, ep, im, cat):
+
+#         dct_item["id"] = res_all["gt"][ep][im]["id"] #save image id
+
+#         dct_item[cat]["tp"] = len(res_all[cat][ep][im]["tp"])
+#         dct_item[cat]["fn"] = len(res_all[cat][ep][im]["fn"])
+#         dct_item[cat]["fp"] = len(res_all[cat][ep][im]["fp"])
+        
+#         dct_item[cat]["fp_bbox"] = res_all[cat][ep][im]["fp_bbox"]
+#         dct_item[cat]["fp_class"] = res_all[cat][ep][im]["fp_class"]
+#         dct_item[cat]["fp_bbox_class"] = res_all[cat][ep][im]["fp_bbox_class"]
+
+#         dct_item[cat]["nan_inf"] = res_all[cat][ep][im]["nan_inf"]
+#         return dct_item
+
+#     # res_all["orig"][4][960]
+#     for ep in range(len(res_all["gt"])):
+#         # print('epoch', ep)
+#         # flt = res_all["faults"][ep]
+#         # --- Meaning for neuron injection: --- #
+#         # 1. batch index (everywhere)
+#         # 2. layer (everywhere)
+
+
+#         orig_sdc_ep = []
+#         corr_sdc_ep = []
+#         resil_orig_sdc_ep = []
+#         resil_corr_sdc_ep = []
+#         orig_due_ep = []
+#         corr_due_ep = []
+#         resil_orig_due_ep = []
+#         resil_corr_due_ep = []
+        
+
+
+#         for im in range(len(res_all["orig"][ep])):
+#             ddct = deepcopy(dct_item)
+
+#             true_obj = res_all["gt"][ep][im]["tp"]
+
+#             tp = len(res_all["orig"][ep][im]["tp"])
+#             fp = len(res_all["orig"][ep][im]["fp"])
+#             fn = len(res_all["orig"][ep][im]["fn"])
+
+#             orig_sdc = (fp + fn)/(2*tp + fp + fn)
+#             ddct = fill_dct_item(ddct, res_all, ep, im, "orig")
+
+#             tp = len(res_all["corr"][ep][im]["tp"])
+#             fp = len(res_all["corr"][ep][im]["fp"])
+#             fn = len(res_all["corr"][ep][im]["fn"])
+#             corr_sdc = (fp + fn)/(2*tp + fp + fn)
+#             ddct = fill_dct_item(ddct, res_all, ep, im, "corr")
+
+#             if resil:
+#                 tp = len(res_all["orig_resil"][ep][im]["tp"])
+#                 fp = len(res_all["orig_resil"][ep][im]["fp"])
+#                 fn = len(res_all["orig_resil"][ep][im]["fn"])
+#                 resil_orig_sdc = (fp + fn)/(2*tp + fp + fn)
+#                 ddct = fill_dct_item(ddct, res_all, ep, im, "orig_resil")
+
+#                 tp = len(res_all["corr_resil"][ep][im]["tp"])
+#                 fp = len(res_all["corr_resil"][ep][im]["fp"])
+#                 fn = len(res_all["corr_resil"][ep][im]["fn"])
+#                 resil_corr_sdc = (fp + fn)/(2*tp + fp + fn)
+#                 ddct = fill_dct_item(ddct, res_all, ep, im, "corr_resil")
+#             else:
+#                 resil_orig_sdc = None
+#                 resil_corr_sdc = None
+
+#             # if ep ==4 and im ==960:
+#             #     x=0
+
+#             orig_sdc_ep.append(orig_sdc)
+#             corr_sdc_ep.append(corr_sdc)
+#             resil_orig_sdc_ep.append(resil_orig_sdc)
+#             resil_corr_sdc_ep.append(resil_corr_sdc)
+
+#             nf = res_all["orig"][ep][im]["nan_inf"]
+#             if nf is not None:
+#                 orig_due_ep.append(nf)
+#             nf = res_all["corr"][ep][im]["nan_inf"]
+#             if nf is not None:
+#                 corr_due_ep.append(nf)
+#             nf = res_all["orig_resil"][ep][im]["nan_inf"]
+#             if nf is not None:
+#                 resil_orig_due_ep.append(nf)
+#             nf = res_all["corr_resil"][ep][im]["nan_inf"]
+#             if nf is not None:
+#                 resil_corr_due_ep.append(nf)
+
+#             dct_save.append(ddct)
+
+
+#         # orig_sdc, corr_sdc, resil_orig_sdc, resil_corr_sdc = np.mean(orig_sdc_ep), np.mean(corr_sdc_ep), np.mean(resil_orig_sdc_ep), np.mean(resil_corr_sdc_ep)
+#         # print('fault', flt, orig_sdc, corr_sdc)
+#         orig_sdc_all.append(orig_sdc_ep)
+#         corr_sdc_all.append(corr_sdc_ep)
+#         resil_orig_sdc_all.append(resil_orig_sdc_ep)
+#         resil_corr_sdc_all.append(resil_corr_sdc_ep)
+
+#         orig_due_all.append(orig_due_ep)
+#         corr_due_all.append(corr_due_ep)
+#         resil_orig_due_all.append(resil_orig_due_ep)
+#         resil_corr_due_all.append(resil_corr_due_ep)
+
+
+    
+#     return orig_sdc_all, corr_sdc_all, resil_orig_sdc_all, resil_corr_sdc_all, orig_due_all, corr_due_all, resil_orig_due_all, resil_corr_due_all, dct_save
+
+
+# def get_dict_all(res_all):
+#     """
+#     Puts all data together to one list.
+#     """
+
+
 
 def get_sdc_all(res_all):
     """
@@ -670,6 +1078,7 @@ def get_sdc_all(res_all):
         # 1. batch index (everywhere)
         # 2. layer (everywhere)
 
+
         orig_sdc_ep = []
         corr_sdc_ep = []
         resil_orig_sdc_ep = []
@@ -678,6 +1087,8 @@ def get_sdc_all(res_all):
         corr_due_ep = []
         resil_orig_due_ep = []
         resil_corr_due_ep = []
+        
+
 
         for im in range(len(res_all["orig"][ep])):
             ddct = deepcopy(dct_item)
@@ -751,4 +1162,6 @@ def get_sdc_all(res_all):
         resil_orig_due_all.append(resil_orig_due_ep)
         resil_corr_due_all.append(resil_corr_due_ep)
 
+
+    
     return orig_sdc_all, corr_sdc_all, resil_orig_sdc_all, resil_corr_sdc_all, orig_due_all, corr_due_all, resil_orig_due_all, resil_corr_due_all, dct_save

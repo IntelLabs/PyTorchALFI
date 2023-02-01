@@ -383,7 +383,7 @@ def random_inj_per_layer_batched(
 
 
 class single_bit_flip_func(core.fault_injection):
-    def __init__(self, model, model_attr, **kwargs):
+    def __init__(self, model, model_attr, ptfiwrap, **kwargs):
         super().__init__(model, h=model_attr.ptf_H, w=model_attr.ptf_W, batch_size=model_attr.ptf_batch_size, \
             c=model_attr.ptf_C, clip=model_attr.ptf_D, **kwargs)
         logging.basicConfig(
@@ -391,7 +391,7 @@ class single_bit_flip_func(core.fault_injection):
         logging.getLogger().setLevel('INFO')
         self.bits = kwargs.get("bits", 8)
         self.rnd_value_type = model_attr.rnd_value_type
-        self.ptfiwrap = kwargs.get("ptfiwrap", None)
+        self.ptfiwrap = ptfiwrap
         self.bit_loc = None
         self.ptfi_batch_pointer = -1
         self.ptfi_batch_pointer_curr = -1
@@ -410,17 +410,14 @@ class single_bit_flip_func(core.fault_injection):
         return cls(model, model_attr, **kwargs)
 
     def compute_runset_length(self):
-        if self.ptfiwrap:
-            if self.ptfiwrap.value_type == 'neurons':
-                runset_length = self.ptfiwrap.num_runs*self.ptfiwrap.dataset_size*self.ptfiwrap.max_faults_per_image
-            elif self.ptfiwrap.value_type == 'weights':
-                if self.ptfiwrap.parser.inj_policy == "per_epoch":
-                    runset_length = self.ptfiwrap.num_runs*self.ptfiwrap.max_faults_per_image
-                if self.ptfiwrap.parser.inj_policy == 'per_batch':
-                    runset_length = int(np.ceil(self.ptfiwrap.num_runs*self.ptfiwrap.dataset_size*self.ptfiwrap.max_faults_per_image/self.ptfiwrap.batch_size))
-            return runset_length
-        else:
-            return 1 ## usefull when single_bit_flip_func is used as standalone single fault injection tool
+        if self.ptfiwrap.value_type == 'neurons':
+            runset_length = self.ptfiwrap.num_runs*self.ptfiwrap.dataset_size*self.ptfiwrap.max_faults_per_image
+        elif self.ptfiwrap.value_type == 'weights':
+            if self.ptfiwrap.parser.inj_policy == "per_epoch":
+                runset_length = self.ptfiwrap.num_runs*self.ptfiwrap.max_faults_per_image
+            if self.ptfiwrap.parser.inj_policy == 'per_batch':
+                runset_length = int(np.ceil(self.ptfiwrap.num_runs*self.ptfiwrap.dataset_size*self.ptfiwrap.max_faults_per_image/self.ptfiwrap.batch_size))
+        return runset_length
 
     def set_conv_max(self, data):
         self.LayerRanges = data

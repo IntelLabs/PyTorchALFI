@@ -1,5 +1,5 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
+# Copyright © 2021 Intel Corporation 
+# SPDX-License-Identifier: Apache-2.0
 
 import logging.config
 import os
@@ -9,6 +9,10 @@ from enum import Enum
 import random
 import numpy as np
 import torch
+from torch._C import device
+import torch.backends.cudnn as cudnn
+
+from tqdm import tqdm
 import yaml
 import collections
 from torchsummary import summary
@@ -17,8 +21,11 @@ from pytorchfi.pytorchfi.errormodels import \
 from alficore.ptfiwrap_utils.pyfihelpers import get_number_of_neurons, \
     get_number_of_weights, random_batch_element, random_layer_element, \
     random_neuron_location, random_weight_location, random_value, \
-    random_layer_weighted
+    random_layer_weighted, compare_weights
+from ..dataloader.loader_factory import LoaderFactory
+from ..models.model_factory import ModelFactory
 from ..parser.config_parser import ConfigParser
+from ..ptfiwrap_utils.utils import get_timestr, rejoin_path
 
 
 logging.config.fileConfig(os.path.abspath(
@@ -53,12 +60,15 @@ class ptfiwrap:
     """main wrapper class that controls the generation of faults and the initialization of 
     faulty models.
     """    
-    def __init__(self, model, **kwargs):
+    def __init__(self, model, loaddata=None, **kwargs):
         """Parses config file and initializes model to be corrupted.
 
         Args:
             model (pytorch model, optional): Trained model to be corrupted.
-            
+            If not provided the wrapper tries to open the model using
+            the model name from the default.yml file. Defaults to None.
+            loaddata (Boolean, optional): Let the wrapper initialize the data loader
+            from an entry in default.yml - deprecated. Defaults to None.
         """        
         self.runset = np.array([])
         self.value_type = ""
@@ -99,6 +109,15 @@ class ptfiwrap:
         if self.parser.print:
             self.print_model_details(self.net)
 
+        
+        if loaddata:
+            self.loader = LoaderFactory.get_dataloader(
+                self.parser.ds_loader_class)
+        if self.create_runset:
+            self.__create_runset()
+        self.__post_init()
+        #in some cases it can be explicitely prevented by setting create_runset to False
+
 
     def __post_init(self):
         self.dataset_size = self.parser.dataset_size
@@ -135,18 +154,41 @@ class ptfiwrap:
         # if random value generation is configured, create a static set
         # of random values according to the number of runs
         else:
-            # initiate PytorchFi model
-            self.__prepare_runmodes()
-            if self.parser.rnd_mode == "neurons":
-                self.runset = self.__fill_values(
-                    rnd_types.neurons, self.num_faults, self.modes,
-                    self.pytorchfi)
+            if self.parser.value_type == "random":
+                # initiate PytorchFi model
+                self.__prepare_runmodes()
+                if self.parser.rnd_mode == "neurons":
+                    self.runset = self.__fill_values(
+                        rnd_types.neurons, self.num_faults, self.modes,
+                        self.pytorchfi)
+                else:
+                    self.runset = self.__fill_values(
+                        rnd_types.weights, self.num_faults, self.modes,
+                        self.pytorchfi)
             else:
-                self.runset = self.__fill_values(
-                    rnd_types.weights, self.num_faults, self.modes,
-                    self.pytorchfi)
+                modes = {"layers": self.parser.st_layers,
+                         "H": self.parser.st_H, "W": self.parser.st_W,
+                         "C": self.parser.st_C,
+                         "value": self.parser.st_value,
+                         "value_type": self.parser.st_value_type}
+                if self.parser.st_mode == "neurons":
+                    modes["batches"] = self.parser.st_batches
+                else:
+                    modes["K"] = self.parser.st_K
+                self.runset = self.__parse_static(self.parser.st_mode,
+                                                  self.num_faults, modes)
             self.runset_updated = self.__adjust_rs_inj_policy()
-            # runset is saved to experiment folder by test_error_models
+            # save runset to disk for later reuse
+            timestr = get_timestr()
+            if self.parser.fi_logfile:
+                dumpfile = self.__prepare_dumpfile(
+                    self.fileDir, "logs", timestr, self.parser.fi_logfile,
+                    "bin")
+            else:
+                dumpfile = self.__prepare_dumpfile(
+                    self.fileDir, "logs", timestr, "runset", "bin")
+            f = open(dumpfile, 'wb')
+            pickle.dump(self.runset, f)
             #####################
             #    End parsing    #
             #####################
@@ -225,8 +267,11 @@ class ptfiwrap:
             self.CONV3D = True
         else:
             self.CONV3D = False
-        self.value_type = self.parser.rnd_mode # weights or neurons
-        self.rnd_value_type = self.parser.rnd_value_type # bitflip
+        if self.parser.value_type == "random":
+            self.value_type = self.parser.rnd_mode # weights or neurons
+            self.rnd_value_type = self.parser.rnd_value_type # bitflip
+        else:
+            self.value_type = self.parser.st_mode
 
         # using the class single_bit_flip_func from pytorchfi errormodels.py
         # in order to access the bit flip functionality
@@ -318,6 +363,49 @@ class ptfiwrap:
         except yaml.YAMLError:
             log.error("Error reading yaml file {}".format(conf_location))
             sys.exit()
+
+    def __load_model(self, model, state, device, source_device):
+        """
+        Load a pytorch model from a class and load its stored state
+        (trained values) from disk
+        :param model: Model name (string)
+        :param state: File location of model's state
+        :param device: name of target device {cpu|cuda}
+        :param source_device: device type for which model state was saved
+        {cpu|cuda}
+        :return: loaded pytorch model with state applied
+        """
+        # Model
+        print('==> Loading model..')
+        state = rejoin_path(state)
+
+        try:
+            net = ModelFactory().get_model(model)
+            # TODO: we assume that the model state was generated with the same
+            # device setting (cuda or CPU)
+            # if not we will ge an exception: add check on state before loading
+            if device.type == 'cuda':
+                net = torch.nn.DataParallel(net)
+                cudnn.benchmark = True
+            if os.path.isfile(state):
+                if device.type == 'cpu' and source_device == 'cuda':
+                    net.load_state_dict(torch.load(state, map_location=device))
+                elif device.type == 'cuda' and source_device == 'cpu':
+                    net.load_state_dict(torch.load(
+                        state, map_location="cuda:0"))
+                else:
+                    net.load_state_dict(torch.load(state))
+                net = net.to(device)
+
+            else:
+                log.error("state not found!")
+                sys.exit()
+            return net
+        except KeyError as e:
+            log.error("Model {} not found, exiting: {}".format(model, e))
+            sys.exit()
+        except FileNotFoundError as ef:
+            log.error("State not found: {}".format(ef))
 
     def get_single_fault(self, fi_type, value_type, pfi_model, **kwargs):
         """[generates single fault with position and value depending in
@@ -616,6 +704,41 @@ class ptfiwrap:
         #     print(key, " -> ", value)
         return runset
 
+    def __parse_static(self, type, runs, modes):
+        """
+        Parses static portion of scenario file and creates an numpy.array
+        where columns are runs and rows represent batch, layer,
+        position and value
+        :rtype: numpy.array
+        :param type: content of st_mode in scenario file {neurons|weights}
+        :param runs: number of FI runs
+        :param modes: a portion from the scenario file relevant
+        for static content
+        :return: runset, a numpy.array representation of the intended
+        faults to be injected
+        """
+        idx = 0
+        if type == rnd_types.neurons:
+            runset = np.empty((6, runs))
+            runset[idx, :] = modes["batches"]
+            idx += 1
+        else:
+            runset = np.empty((6, runs))
+        # Channels
+        runset[idx, :] = modes["C"]
+        idx += 1
+        # Height
+        runset[idx, :] = modes["H"]
+        idx += 1
+        # Width
+        runset[idx, :] = modes["W"]
+        idx += 1
+        if type == rnd_types.weights:
+            runset[idx, :] = modes["K"]
+            idx += 1
+        # Value
+        runset[idx, :] = modes["value"]
+        return runset
 
     def __tile_epoch(self, epoch, batchsize, total):
         sequence = np.arange(batchsize)
@@ -706,6 +829,16 @@ class ptfiwrap:
         self.__post_init()
         if create_runset:
             self.__create_runset()
+
+    def get_test_loader(self):
+        loader = self.__get_data_loader()
+        testloader = loader.get_test_loader(
+            data_dir=self.parser.ds_location,
+            batch_size=self.parser.ptf_batch_size,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=False)
+        return testloader
 
     def get_fimodel_iter(self, num_faults_per_image=None,
                          fault_rate=None, resume_pointer=None):

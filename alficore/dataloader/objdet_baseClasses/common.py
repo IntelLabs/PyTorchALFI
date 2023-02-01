@@ -78,7 +78,7 @@ def trivial_batch_collator(batch):
 
 class DatasetMapper:
     """
-    A callable which takes a dataset dict in pytorchalfi Dataset format,
+    A callable which takes a dataset dict in pytorchFIwrapper Dataset format,
     and map it into a format used by the model.
 
     This is the default callable to be used to map your dataset dict into training data.
@@ -101,10 +101,10 @@ class DatasetMapper:
     def __call__(self, dataset_dict):
         """
         Args:
-            dataset_dict (dict): Metadata of one image, in pytorchalfi Dataset format.
+            dataset_dict (dict): Metadata of one image, in pytorchFIwrapper Dataset format.
 
         Returns:
-            dict: a format that builtin models in pytorchalfi accept
+            dict: a format that builtin models in pytorchFIwrapper accept
         """
         # dataset_dict.pop("annotations", None)
         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
@@ -114,7 +114,8 @@ class DatasetMapper:
 
         if len(image.shape) < 3: #in case of grayscale images
 
-            t = torch.as_tensor(np.ascontiguousarray(image)).unsqueeze(0)
+            # t = torch.as_tensor(np.ascontiguousarray(image)).unsqueeze(0)
+            t = torch.as_tensor(np.ascontiguousarray(image).copy()).unsqueeze(0)
             dataset_dict["image"] = torch.cat([t,t,t], dim=0)
         else:
             dataset_dict["image"] = torch.as_tensor(np.ascontiguousarray(image.transpose(2, 0, 1)))
@@ -356,6 +357,20 @@ def read_image(file_name, format=None):
         # work around this bug: https://github.com/python-pillow/Pillow/issues/3973
         return convert_PIL_to_numpy(image, format)
 
+def pytorchFI_objDet_inputcheck(inputs):
+    _input_dict_keys = ['image', 'image_id']
+    batch_size = len(inputs)
+    try:
+        assert isinstance(inputs, list)
+        input_sample_dict_keys = list(inputs[0].keys())
+        assert all(_keys in input_sample_dict_keys for _keys in _input_dict_keys)
+        return inputs
+    except AssertionError:
+        logging.warning("Input to the model doesnt meet the requirement of pytorchFI object detection component")
+        # inputs = [{'image': inputs, 'image_id': 0}, {'image': inputs, 'image_id': 1}]
+        inputs = [{'image': inputs[_bs], 'image_id': _bs} for _bs in range(batch_size)]
+        return inputs
+
 def pytorchFI_objDet_inputcheck(inputs, dummy=False):
     _input_dict_keys = ['image', 'image_id']
     batch_size = len(inputs)
@@ -365,8 +380,8 @@ def pytorchFI_objDet_inputcheck(inputs, dummy=False):
         assert all(_keys in input_sample_dict_keys for _keys in _input_dict_keys)
         return inputs
     except AssertionError:
-        if dummy == False:
-            logging.warning("Input to the model doesnt meet the requirement of pytorchFI object detection component")
+        # if dummy == False:
+        #     logging.warning("Input to the model doesnt meet the requirement of pytorchFI object detection component")
         inputs = [{'image': inputs[_bs], 'image_id': _bs} for _bs in range(batch_size)]
         return inputs
 

@@ -1,0 +1,33 @@
+digraph Tree {
+node [shape=box, style="filled, rounded", color="black", fontname="helvetica"] ;
+edge [fontname="helvetica"] ;
+0 [label=<q100_lay66 &le; 0.88<br/>gini = 0.833<br/>samples = 86907<br/>value = [726.0, 726.0, 726.0, 726.0, 726.0, 726.0]<br/>class = no_sdc>, fillcolor="#ffffff"] ;
+1 [label=<q90_lay67 &le; 0.715<br/>gini = 0.768<br/>samples = 85343<br/>value = [725.443, 22.0, 94.729, 726.0, 726.0, 726.0]<br/>class = blur>, fillcolor="#ffffff"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label=<q10_lay2 &le; 0.003<br/>gini = 0.487<br/>samples = 17348<br/>value = [198.363, 8.0, 29.506, 0.0, 37.776, 12.056]<br/>class = no_sdc>, fillcolor="#eead7f"] ;
+1 -> 2 ;
+3 [label=<gini = 0.027<br/>samples = 419<br/>value = [0.474, 0.0, 0.0, 0.0, 34.007, 0.0]<br/>class = noise>, fillcolor="#833ce5"] ;
+2 -> 3 ;
+4 [label=<gini = 0.362<br/>samples = 16929<br/>value = [197.889, 8.0, 29.506, 0.0, 3.769, 12.056]<br/>class = no_sdc>, fillcolor="#eb9f69"] ;
+2 -> 4 ;
+5 [label=<q50_lay10 &le; 0.416<br/>gini = 0.76<br/>samples = 67995<br/>value = [527.08, 14.0, 65.224, 726.0, 688.224, 713.944]<br/>class = blur>, fillcolor="#fefeff"] ;
+1 -> 5 ;
+6 [label=<gini = 0.74<br/>samples = 32537<br/>value = [324.904, 7.0, 36.494, 149.103, 170.934, 139.054]<br/>class = no_sdc>, fillcolor="#f9e1d1"] ;
+5 -> 6 ;
+7 [label=<gini = 0.733<br/>samples = 35458<br/>value = [202.177, 7.0, 28.729, 576.897, 517.29, 574.89]<br/>class = blur>, fillcolor="#ffffff"] ;
+5 -> 7 ;
+8 [label=<q50_lay28 &le; 0.851<br/>gini = 0.499<br/>samples = 1564<br/>value = [0.557, 704.0, 631.271, 0.0, 0.0, 0.0]<br/>class = neurons>, fillcolor="#f5fceb"] ;
+0 -> 8 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+9 [label=<q100_lay65 &le; 0.607<br/>gini = 0.0<br/>samples = 652<br/>value = [0.012, 0.0, 505.482, 0.0, 0.0, 0.0]<br/>class = weights>, fillcolor="#39e581"] ;
+8 -> 9 ;
+10 [label=<gini = 0.0<br/>samples = 1<br/>value = [0.012, 0.0, 0.0, 0.0, 0.0, 0.0]<br/>class = no_sdc>, fillcolor="#e58139"] ;
+9 -> 10 ;
+11 [label=<gini = 0.0<br/>samples = 651<br/>value = [0.0, 0.0, 505.482, 0.0, 0.0, 0.0]<br/>class = weights>, fillcolor="#39e581"] ;
+9 -> 11 ;
+12 [label=<q70_lay52 &le; 0.386<br/>gini = 0.258<br/>samples = 912<br/>value = [0.545, 704.0, 125.788, 0.0, 0.0, 0.0]<br/>class = neurons>, fillcolor="#afea5d"] ;
+8 -> 12 ;
+13 [label=<gini = 0.304<br/>samples = 146<br/>value = [0.012, 22.0, 95.506, 0.0, 0.0, 0.0]<br/>class = weights>, fillcolor="#67eb9e"] ;
+12 -> 13 ;
+14 [label=<gini = 0.083<br/>samples = 766<br/>value = [0.533, 682.0, 30.282, 0.0, 0.0, 0.0]<br/>class = neurons>, fillcolor="#a1e642"] ;
+12 -> 14 ;
+}

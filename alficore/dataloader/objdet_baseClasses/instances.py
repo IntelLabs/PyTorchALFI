@@ -1,7 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import itertools
 from typing import Any, Dict, List, Tuple, Union
-from attr import field
 import torch
 
 
@@ -72,13 +71,11 @@ class Instances:
         The length of `value` must be the number of instances,
         and must agree with other existing fields in this object.
         """
+        data_len = len(value)
         if len(self._fields):
-            fields_len = self.fields_len_check if hasattr(self, "fields_len_check") else True
-            if fields_len:
-                data_len = len(value)
-                assert (
-                    len(self) == data_len
-                ), "Adding a field of length {} to a Instances of length {}".format(data_len, len(self))
+            assert (
+                len(self) == data_len
+            ), "Adding a field of length {} to a Instances of length {}".format(data_len, len(self))
         self._fields[name] = value
 
     def has(self, name: str) -> bool:
@@ -143,24 +140,10 @@ class Instances:
         return ret
 
     def __len__(self) -> int:
-        if hasattr(self, "fields_len_check"):
-            if not self.fields_len_check:
-                try:
-                    return len(self._fields["pred_boxes"])
-                except:
-                    # try:
-                    #     return len(self._fields["bbox"])
-                    # except:
-                    return 0
-            else:
-                for v in self._fields.values():
-                # use __len__ because len() has to be int and is not friendly to tracing
-                    return v.__len__()
-        else:
-            for v in self._fields.values():
+        for v in self._fields.values():
             # use __len__ because len() has to be int and is not friendly to tracing
-                return v.__len__()
-            raise NotImplementedError("Empty Instances does not support __len__!")
+            return v.__len__()
+        raise NotImplementedError("Empty Instances does not support __len__!")
 
     def __iter__(self):
         raise NotImplementedError("`Instances` object is not iterable!")
@@ -200,11 +183,8 @@ class Instances:
     def __str__(self) -> str:
         s = self.__class__.__name__ + "("
         s += "num_instances={}, ".format(len(self))
-        if isinstance(self._image_size, int):
-            s += "image_height={}, ".format(self._image_size)
-        else:
-            s += "image_height={}, ".format(self._image_size[0])
-            s += "image_width={}, ".format(self._image_size[1])
+        s += "image_height={}, ".format(self._image_size[0])
+        s += "image_width={}, ".format(self._image_size[1])
         s += "fields=[{}])".format(", ".join((f"{k}: {v}" for k, v in self._fields.items())))
         return s
 

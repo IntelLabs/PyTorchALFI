@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 # Copyright (c) Facebook, Inc. and its affiliates.
 # # intel copyright
 from enum import Enum, unique
@@ -196,7 +193,7 @@ class Visualizer(object):
 
     # TODO implement a fast, rasterized version using OpenCV
 
-    def __init__(self, img_rgb=None, metadata=None, scale=1.0, vis_mode='online', instance_mode=ColorMode.IMAGE):
+    def __init__(self, img_rgb=None, metadata=None, scale=1.0, vis_mode='online', instance_mode=ColorMode.IMAGE, class_names=None):
         """
         Args:
             img_rgb: a numpy array of shape (H, W, C), where H and W correspond to
@@ -215,7 +212,7 @@ class Visualizer(object):
             metadata = MetadataCatalog.get("__nonexist__")
         self.metadata = metadata
 
-        if vis_mode == 'online':
+        if vis_mode is 'online':
             self.img = np.asarray(img_rgb).clip(0, 255).astype(np.uint8)
             self.output = VisImage(self.img, scale=self.scale)
         # too small texts are useless, therefore clamp to 9
@@ -223,6 +220,7 @@ class Visualizer(object):
                 np.sqrt(self.output.height * self.output.width) // 90, 10 // self.scale
             )
         self._instance_mode = instance_mode
+        self.class_names = class_names
 
     @classmethod
     def check_bbox(self, bbox):
@@ -240,7 +238,7 @@ class Visualizer(object):
     def create_instance(self, img_size=416, annotations=None):
         """
         pred_boxes should be passed in raw XYWH format and internally this function converts them back to native
-        format preferred by alficore functions viz XYXY  format.
+        format preferred by pytorchfiWrapper functions viz XYXY  format.
         """
         pred_boxes_xywh = [annotations[i]['bbox'] for i in range(len(annotations))]
         pred_boxes_xyxy = [BoxMode.convert(box, BoxMode.XYWH_ABS, BoxMode.XYXY_ABS) for box in pred_boxes_xywh]
@@ -384,7 +382,7 @@ class Visualizer(object):
                     img_rgb = np.zeros((img_rgb.shape))
                 self.img = np.asarray(img_rgb).clip(0, 255).astype(np.uint8)
                 if vis_features.vis_tpfpfn and not vis_type:
-                    if "c" in _type: ## selecting the right text for the type of fault corruption info
+                    if "c" in _type:
                         if injection_type == 'weights':
                             label = "TP: " + str(len(tp_fp_fn['tp'])) + ", " + "FP: " + str(len(tp_fp_fn['fp'])) + ", " + "FN: " + str(len(tp_fp_fn['fn'])) \
                                 + ", " + "b: " + str(int(faults[6, n+epoch*(len(img_ids))])) + ", " + "l: " + str(int(faults[0, n+epoch*(len(img_ids))]))
@@ -548,7 +546,7 @@ class Visualizer(object):
         Returns:
             output (VisImage): image object with visualizations.
         """
-        kitti_labels = ['Car', 'Pedestrian', 'Van', 'Truck', 'Cyclist', 'DontCare', 'Person_sitting', 'Tram', 'Misc']
+        # kitti_labels = ['Car', 'Pedestrian', 'Van', 'Truck', 'Cyclist', 'DontCare', 'Person_sitting', 'Tram', 'Misc']
         ids = kwargs.get("ids", None)
         only_bbox = kwargs.get("only_bbox", False)
         text_shift = kwargs.get("text_shift", None)
@@ -559,16 +557,17 @@ class Visualizer(object):
 
         boxes = predictions.pred_boxes if predictions.has("pred_boxes") else None
         scores = predictions.scores if predictions.has("scores") else None
-        classes = predictions.pred_classes.tolist() if predictions.has("pred_classes") else None
-        class_names = self.metadata.get("thing_classes", None)
-        # if self.metadata.get('dataset') is not None:
-        #     if self.metadata.dataset == 'kitti': #replace for kitti since not yet updated
-        #         class_names = ['Car', 'Pedestrian', 'Van', 'Truck', 'Cyclist', 'DontCare', 'Person_sitting', 'Tram', 'Misc'] #Only for kitti
-        #     elif self.metadata.dataset == 'lyft':
-        #         class_names = ['car', 'pedestrian', 'animal', 'other_vehicle', 'bus', 'motorcycle', 'truck', 'bicycle']
-        #         # ['animal': 9, 'bicycle': 5, 'bus': 4, 'car': 1, 'emergency_vehicle': 4, 'motorcycle': 5, 'other_vehicle': 7, 'pedestrian': 7, 'truck': 4}
+        # classes = predictions.pred_classes.tolist() if predictions.has("pred_classes") else None
+        classes = predictions.pred_classes if predictions.has("pred_classes") else None
+        # class_names = self.metadata.get("thing_classes", None)
+        # # if self.metadata.get('dataset') is not None:
+        # #     if self.metadata.dataset == 'kitti': #replace for kitti since not yet updated
+        # #         class_names = ['Car', 'Pedestrian', 'Van', 'Truck', 'Cyclist', 'DontCare', 'Person_sitting', 'Tram', 'Misc'] #Only for kitti
+        # #     elif self.metadata.dataset == 'lyft':
+        # #         class_names = ['car', 'pedestrian', 'animal', 'other_vehicle', 'bus', 'motorcycle', 'truck', 'bicycle']
+        # #         # ['animal': 9, 'bicycle': 5, 'bus': 4, 'car': 1, 'emergency_vehicle': 4, 'motorcycle': 5, 'other_vehicle': 7, 'pedestrian': 7, 'truck': 4}
         
-        labels = _create_text_labels(classes, scores, class_names)
+        labels = _create_text_labels(classes, scores, self.class_names)
         # labels = _create_text_labels(classes, scores, kitti_labels)
         keypoints = predictions.pred_keypoints if predictions.has("pred_keypoints") else None
 
@@ -775,11 +774,12 @@ class Visualizer(object):
 
                 height_ratio = (y1 - y0) / np.sqrt(self.output.height * self.output.width)
                 lighter_color = self._change_color_brightness(color, brightness_factor=0.7)
-                font_size = (
-                    np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2)
-                    * 0.5
-                    * self._default_font_size
-                )
+                # font_size = (
+                #     np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2)
+                #     * 0.5
+                #     * self._default_font_size
+                # )
+                font_size = 20 #TODO remove later
                 if not only_bbox:
                     self.draw_text(
                         labels[i],
@@ -904,7 +904,8 @@ class Visualizer(object):
         width = x1 - x0
         height = y1 - y0
 
-        linewidth = max(self._default_font_size / 4, 1)
+        # linewidth = max(self._default_font_size / 4, 1)
+        linewidth = 7 #TODO: linewidth
 
         self.output.ax.add_patch(
             mpl.patches.Rectangle(
@@ -969,9 +970,10 @@ class Visualizer(object):
 
             height_ratio = h / np.sqrt(self.output.height * self.output.width)
             label_color = self._change_color_brightness(edge_color, brightness_factor=0.7)
-            font_size = (
-                np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2) * 0.5 * self._default_font_size
-            )
+            # font_size = (
+            #     np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2) * 0.5 * self._default_font_size
+            # )
+            font_size =24 #TODO fontsize
             self.draw_text(label, text_pos, color=label_color, font_size=font_size, rotation=angle)
 
         return self.output
@@ -1320,19 +1322,19 @@ def simple_visualization(input_dict, out_instance, output_path, dataset_name, **
     from alficore.dataloader.objdet_baseClasses.catalog import MetadataCatalog
     metadata = MetadataCatalog.get(dataset_name + '/val')
 
-    #if dataset_name == "coco2014" or dataset_name == "coco2017" or dataset_name == 'robo' or dataset_name == 'ppp':
-    #    dataset_id_to_contiguous_id = metadata.thing_dataset_id_to_contiguous_id
-    #
-    #    # Set back classes from 91 len to 80 len only to match with string labels of classes
-    #    try:
-    #        vis_copy.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in vis_copy.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
-    #        if extra_vis_copy is not None:
-    #            extra_vis_copy.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in extra_vis_copy.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
-    #        if extra_vis_copy2 is not None:
-    #            extra_vis_copy2.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in extra_vis_copy2.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
-    #    except:
-    #        print("Input has the wrong class labels (0-80) instead of (1-91)?)")
-    #        return
+    # if dataset_name == "coco2014" or dataset_name == "coco2017" or dataset_name == 'robo' or dataset_name == 'ppp':
+    #     dataset_id_to_contiguous_id = metadata.thing_dataset_id_to_contiguous_id
+
+    #     # Set back classes from 91 len to 80 len only to match with string labels of classes
+    #     try:
+    #         vis_copy.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in vis_copy.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
+    #         if extra_vis_copy is not None:
+    #             extra_vis_copy.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in extra_vis_copy.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
+    #         if extra_vis_copy2 is not None:
+    #             extra_vis_copy2.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in extra_vis_copy2.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
+    #     except:
+    #         print("Input has the wrong class labels (0-80) instead of (1-91)?)")
+    #         return
 
     img = Image.open(input_dict['file_name'])
     visualizer = Visualizer(np.array(img), metadata) #labels are strings
@@ -1368,6 +1370,7 @@ def simple_visualization(input_dict, out_instance, output_path, dataset_name, **
     print('saved as:', output_path)
 
 
+
 def simple_visualization_direct_img(input_dict, out_instance, output_path, dataset_name, **kwargs):
     # Specific class conversions for coco are included.
 
@@ -1377,6 +1380,7 @@ def simple_visualization_direct_img(input_dict, out_instance, output_path, datas
     extra_boxes2 = kwargs.get('extra_boxes2', None)
     only_bbox = kwargs.get('only_bbox', False)
     # colors = kwargs.get('colors', None)
+    class_names = kwargs.get('classes', None)
 
     from copy import deepcopy
     from alficore.dataloader.objdet_baseClasses.instances import Instances
@@ -1399,27 +1403,9 @@ def simple_visualization_direct_img(input_dict, out_instance, output_path, datas
     vis_copy = copy_instance(out_instance)
     extra_vis_copy = copy_instance(extra_boxes)
     extra_vis_copy2 = copy_instance(extra_boxes2)
-
-    from alficore.dataloader.objdet_baseClasses.catalog import MetadataCatalog
-    metadata = MetadataCatalog.get(dataset_name + '/val')
-
-    # if dataset_name == "coco2014" or dataset_name == "coco2017" or dataset_name == 'robo' or dataset_name == 'ppp':
-    #     dataset_id_to_contiguous_id = metadata.thing_dataset_id_to_contiguous_id
-
-    #     # Set back classes from 91 len to 80 len only to match with string labels of classes
-    #     try:
-    #         vis_copy.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in vis_copy.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
-    #         if extra_vis_copy is not None:
-    #             extra_vis_copy.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in extra_vis_copy.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
-    #         if extra_vis_copy2 is not None:
-    #             extra_vis_copy2.pred_classes = torch.tensor([dataset_id_to_contiguous_id[x] for x in extra_vis_copy2.pred_classes.tolist()], dtype=torch.uint8) #move to 0-80 class numbers to match with strings
-    #     except:
-    #         print("Input has the wrong class labels (0-80) instead of (1-91)?)")
-    #         return
-
-    # img = Image.open(input_dict['file_name'])
+    
     img = input_dict['image'].permute(1,2,0)
-    visualizer = Visualizer(np.array(img), metadata) #labels are strings
+    visualizer = Visualizer(np.array(img), class_names=class_names) #labels are strings
 
     # visualizer = Visualizer(np.array(img)) #labels are numbers
     
@@ -1441,17 +1427,19 @@ def simple_visualization_direct_img(input_dict, out_instance, output_path, datas
     else:
         visualizer.draw_instance_predictions(vis_copy, ids=ids)
 
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
     if inset_str is not None:
         fig, ax = visualizer.output.fig, visualizer.output.ax
-        fig.text(0.5, 0.97, inset_str, horizontalalignment='center', verticalalignment='center', fontsize=14, color='black', bbox=dict(facecolor='white', edgecolor='none', pad=2.0))
+        fig.text(0.5, 0.90, inset_str, horizontalalignment='center', verticalalignment='center', fontsize=26, color='black', bbox=dict(facecolor='white', edgecolor='none', pad=2.0)) #fs=14 before
 
-    visualizer.output.save(output_path)
-    print('saved as:', output_path)
-    
-    
+    if output_path is not None:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        visualizer.output.save(output_path)
+        print('saved as:', output_path)
+
+    return visualizer.output
+
+
+
 def simple_visualisation_bb(img, boxes, output_path, box_repr=0, labels=None):
     """
     Draw bounding boxes
@@ -1526,24 +1514,22 @@ def group_objects_by_imageId(coco_labels, img_ids_ref):
     return coco_labels_grouped
 
 def injType_and_faults_(folder_path, batch_size, _type):
-    if "c" in _type:
-        filelist = list( Path(folder_path).glob('**/*updated_rs_fault_locs.bin'))
-        filelist = [filelist[a] for a in range(len(filelist)) if "{}bs".format(str(batch_size)) in filelist[a].name]
-        if len(filelist)==2 and filelist[0]>filelist[1]:
-            fault_file =  str(filelist[0])
-        elif len(filelist)==2 and filelist[0]<filelist[1]:
-            fault_file =  str(filelist[1])
-        else:
-            fault_file = filelist[0]
-        faults = read_faultbin_file(fault_file)
-
-        ## read injection type:
-        yaml_file = list(Path(folder_path).glob('**/*.yml'))[0]
-        data = read_yaml(yaml_file)[0]
-        injection_type = data['rnd_mode']
-        return injection_type, faults
+    filelist = list( Path(folder_path).glob('**/*updated_rs_fault_locs.bin'))
+    filelist = [filelist[a] for a in range(len(filelist)) if "{}bs".format(str(batch_size)) in filelist[a].name]
+    if len(filelist)==2 and filelist[0]>filelist[1]:
+        fault_file =  str(filelist[0])
+    elif len(filelist)==2 and filelist[0]<filelist[1]:
+        fault_file =  str(filelist[1])
     else:
-        return None, None
+        fault_file = filelist[0]
+    faults = read_faultbin_file(fault_file)
+
+    ## read injection type:
+    yaml_file = list(Path(folder_path).glob('**/*.yml'))[0]
+    data = read_yaml(yaml_file)[0]
+    injection_type = data['rnd_mode']
+
+    return injection_type, faults
 
 def simple_xx_coverage(input_dict, out_instance, **kwargs):
     # Specific class conversions for coco are included.

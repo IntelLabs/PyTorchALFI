@@ -1,0 +1,6 @@
+classes= 80
+train=/nwstore/datasets/COCO/coco2014/trainvalno5k.part
+valid=/nwstore/datasets/COCO/coco2014/5k.part
+names=alficore/models/yolov3/config/coco.names
+backup=backup/
+eval=coco

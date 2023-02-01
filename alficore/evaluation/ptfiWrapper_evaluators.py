@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 from collections import OrderedDict, abc
 
 class DatasetEvaluator:

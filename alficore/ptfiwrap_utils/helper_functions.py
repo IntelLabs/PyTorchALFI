@@ -1,16 +1,15 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 import torch
 import numpy as np
 import json
 import os
 import glob
-from collections import Iterable
+from collections.abc import Iterable
 import subprocess
 import numpy as np
+import sys
 # ImageNet -----------------------------------------------
 
+    
 class TEM_Dataloader_attr:
     """
     Test_Error_Models_Dataloader_attr:
@@ -33,6 +32,7 @@ class TEM_Dataloader_attr:
         self.dl_transform       = dl_transform
         self.dl_img_root        = dl_img_root
         self.dl_gt_json         = dl_gt_json
+
 
 def show_gpu(cuda_device, msg):
     """
@@ -71,6 +71,9 @@ def prepare_imageNet_data():
         class_mapping = class_idx[list(class_idx.keys())[i]][0]
         class_label = class_idx[list(class_idx.keys())[i]][1]
         label_dict[class_mapping] = class_label
+
+    # json_read = "/home/qutub/PhD/git_repos/intel_gitlab_repos/example_images/imagenet/imagenet_class_index.json"
+    # class_idx = json.load(open(json_read))
 
     with open(imagenet_mapping) as f:
         mapping = [line.strip() for line in f.readlines()]
@@ -115,24 +118,39 @@ def save_torch_to_onnx(model, image_shape, onnx_file):
 
 # Load and save bounds ------------------------------------
 
+def assign_val_train(dl_attr):
+    if 'coco' in dl_attr.dl_dataset_name.lower():
+        if dl_attr.dl_dataset_type == 'val':
+            dl_attr.dl_img_root = '/nwstore/datasets/COCO/coco2017/val2017'
+            dl_attr.dl_gt_json  = '/nwstore/datasets/COCO/coco2017/annotations/instances_val2017.json'
+        elif dl_attr.dl_dataset_type == 'train':
+            dl_attr.dl_img_root = '/nwstore/datasets/COCO/coco2017/train2017'
+            dl_attr.dl_gt_json  = '/nwstore/datasets/COCO/coco2017/annotations/instances_train2017.json'
+        else:
+            print('Please choose val or train dataset.')
 
-# def save_Bounds_minmax(activations_in, bnds_name):
-#     """
-#     Saves Ranger bounds
-#     :param activations_in: list of format [[min, max], [min, max], ... ]
-#     :param bnds_name: 'Vgg16_bounds_dog' for example
-#     :return: saves to a txt file in /bounds
-#     """
-
-#     bnd_path = str('./bounds/' + bnds_name + '.txt')
-#     f = open(bnd_path, "w+")
-#     for u in range(len(activations_in)):
-#         f.write(str(activations_in[u][0]) + " , " + str(activations_in[u][1]))
-#         f.write("\n")
-#     f.close()
-
-#     print('Bounds saved as ' + bnds_name)
-
+    elif 'kitti' in dl_attr.dl_dataset_name.lower():
+        dl_attr.dl_gt_json = '/nwstore/datasets/KITTI/2d_object/training/split/image_2_label_CoCo_format_test_split.json'
+        if dl_attr.dl_dataset_type == 'val':
+            dl_attr.dl_img_root = '/nwstore/datasets/KITTI/2d_object/testing/image_2'
+        elif dl_attr.dl_dataset_type == 'train':
+            dl_attr.dl_img_root = '/nwstore/datasets/KITTI/2d_object/training/image_2'
+        else:
+            print('Please choose val or train dataset.') 
+    elif "imagenet" in dl_attr.dl_dataset_name.lower():
+        dl_attr.dl_gt_json = '/nwstore/datasets/ImageNet/imagenet_class_index.json'
+        if dl_attr.dl_dataset_type == 'val':
+            dl_attr.dl_img_root = '/nwstore/datasets/ImageNet/ILSVRC/random20classes_FI'
+        elif dl_attr.dl_dataset_type == 'train':
+            dl_attr.dl_img_root = '/nwstore/datasets/ImageNet/ILSVRC/Data/CLS-LOC/train'
+        else:
+            print('Please choose val or train dataset.') 
+    elif "mnist" in dl_attr.dl_dataset_name.lower():
+        print('Loading from local MNIST dataset.')
+    else:
+        print('[helper functions] unknown dataset_name, please check.')
+        sys.exit()
+    return dl_attr
 
 
 def save_Bounds_minmax(activations_in, bnds_name):
@@ -155,7 +173,7 @@ def save_Bounds_minmax(activations_in, bnds_name):
         f.write("\n")
     f.close()
 
-    print('Bounds saved to ' + bnds_name)
+    print('Bounds saved to ' + bnd_path)
 
 
 def get_savedBounds_minmax(filename):

@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 import os
 import contextlib
 
@@ -119,12 +116,14 @@ class CoCo_obj_det_native_dataloader(Abstract_Loader):
         # sort indices for reproducible results
         img_ids = sorted(coco_api.imgs.keys())
         if dl_attr.dl_sampleN:
-            if dl_attr.dl_sampleN <= 1:
+            if dl_attr.dl_sampleN < 1:
                 sampleN = dl_attr.dl_sampleN
             else:
                 sampleN = dl_attr.dl_sampleN/len(img_ids)
             val_split, _ = self.split_data(dataset_len=len(img_ids), sampleN=sampleN, random_sample=dl_attr.dl_random_sample)
             img_ids = [img_ids[i] for i in val_split]
+        print('Set dataset len to', len(img_ids))
+
         if dl_attr.dl_shuffle:
             shuffle(img_ids)
         imgs = coco_api.loadImgs(img_ids)

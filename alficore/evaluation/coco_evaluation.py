@@ -211,33 +211,31 @@ class COCOEvaluator(DatasetEvaluator):
 
             reverse_id_mapping = {v: k for k, v in dataset_id_to_contiguous_id.items()}
 
-            """
-            TODO: Remove the below commented code
-            """
             # if self.model_name.lower() in ["retina", 'frcnn_torchvision']: #models that have already been trained on all 91 classes, e.g. RetinaNet
             #     num_classes = 91
             # else: #models that were trained only on 80 classes, e.g. Yolov3
             #     num_classes = 80
+            num_classes = 80
 
-            # for result in coco_results:
-            #     category_id = result["category_id"]
+            for result in coco_results:
+                category_id = result["category_id"]
 
-            #     if num_classes == 80:
-            #         assert category_id < num_classes, (
-            #             f"A prediction has class={category_id}, "
-            #             f"but the dataset only has {num_classes} classes and "
-            #             f"predicted class id should be in [0, {num_classes - 1}]."
-            #         )
-            #         result["category_id"] = reverse_id_mapping[category_id]
+                if num_classes == 80:
+                    assert category_id < num_classes, (
+                        f"A prediction has class={category_id}, "
+                        f"but the dataset only has {num_classes} classes and "
+                        f"predicted class id should be in [0, {num_classes - 1}]."
+                    )
+                    result["category_id"] = reverse_id_mapping[category_id]
 
-            #     elif num_classes == 91:
+                # elif num_classes == 91:
 
-            #         assert category_id <= num_classes, (
-            #             f"A prediction has class={category_id}, "
-            #             f"but the dataset only has {num_classes} classes and "
-            #             f"predicted class id should be in [0, {num_classes}]."
-            #         )
-            #         result["category_id"] = category_id
+                #     assert category_id <= num_classes, (
+                #         f"A prediction has class={category_id}, "
+                #         f"but the dataset only has {num_classes} classes and "
+                #         f"predicted class id should be in [0, {num_classes}]."
+                #     )
+                #     result["category_id"] = category_id
 
         if self._outputdir:
             file_name = os.path.join(self._outputdir, self.dataset_name, self.model_type, 'epochs', str(epoch), "coco_instances_results_{}_epoch.json".format(epoch))

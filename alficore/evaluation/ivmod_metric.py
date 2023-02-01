@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
@@ -143,6 +140,8 @@ def assign_hungarian_trial(source, target, iou_thresh, **kwargs):
     iou_list = cost[row_ind,col_ind] #list of chosen iou pairings, in order of source list
     return row_ind, col_ind, row_ind_unassigned, col_ind_unassigned, fp_flags, iou_list
 
+
+
 def assign_hungarian(source, target, iou_thresh, **kwargs):
     """
     source, target are lists of detected-object dictionaries.
@@ -165,6 +164,8 @@ def assign_hungarian(source, target, iou_thresh, **kwargs):
     # print('rows', row_ind)#The row index corresponding to the cost matrix
     # print('cols', col_ind)#The optimally assigned column index corresponding to the row index
 
+
+
     cost = cost*(-1) #invert again to make costs positive (=iou)
     # print('costs', cost[row_ind,col_ind])# Extract the element where the optimal assigned column index of each row index is located to form an array
     # print('costs overall', cost[row_ind,col_ind].sum())#array sum
@@ -181,12 +182,41 @@ def assign_hungarian(source, target, iou_thresh, **kwargs):
         row_ind = row_ind[np.logical_not(elim)]
         col_ind = col_ind[np.logical_not(elim)]
         fp_bbox += np.sum(elim)
+        for row, col in zip(row_ind, col_ind):
+            if source[row]['category_id'] != target[col]['category_id']:
+                fp_bbox_class += 1
+
+    if check_class_labels is True:
+        for row, col in zip(row_ind, col_ind):
+            # print(row, col)
+            # print(source[row]['category_id'])
+            # print(target[col]['category_id'])
+            if source[row]['category_id'] != target[col]['category_id']:
+                print('Category id mismatch!!!')
+                print(source[row]['category_id'])
+                print(target[col]['category_id'])
+                row_ind = np.delete(row_ind, np.where(row_ind==row))
+                col_ind = np.delete(col_ind, np.where(col_ind==col))
+                fp_class += 1
+
+    # elif check_class_groups == True:
+    #     class_groups = kwargs.get("class_groups", [])
+    #     for row, col in zip(row_ind, col_ind):
+    #         for group in class_groups:
+    #             if metadata.thing_classes[source[row]['category_id']] in group:
+    #                 if metadata.thing_classes[target[col]['category_id']] not in group:
+    #                     print('Category class mismatch!!!')
+    #                     print(source[row]['category_id'])
+    #                     print(target[col]['category_id'])
+    #                     row_ind = np.delete(row_ind, np.where(row_ind==row))
+    #                     col_ind = np.delete(col_ind, np.where(col_ind==col))
+    #                     break
 
     # Derive unassigned rows and cols
     row_ind_unassigned = list(set(all_rows) - set(row_ind))
     col_ind_unassigned = list(set(all_cols) - set(col_ind))
 
-    fp_flags = {"bbox_mismatch": int(fp_bbox)}
+    fp_flags = {"bbox_mismatch": int(fp_bbox), "class_mismatch": fp_class, "bbox_class_mismatch": fp_bbox_class}
     iou_list = cost[row_ind,col_ind] #list of chosen iou pairings, in order of source list
     return row_ind, col_ind, row_ind_unassigned, col_ind_unassigned, fp_flags, iou_list
 

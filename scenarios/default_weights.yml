@@ -34,7 +34,7 @@ fi_logfile: fault_rates_alexnet_10
 # 'resnext29_2x64d, resnext29_4x64d, resnext29_8x64d, resnext29_32x4d'
 # names can be lower case or camel case
 # mandatory
-modelname: yolov3
+modelname: lenet
 
 # state: complete path to location of model state
 # if you state as relative path it must be relative to your main python file
@@ -53,6 +53,7 @@ run_type: single
 
 # This determines the total number of fault definitions that are prepared
 # The relevant parameters are:
+# dataset_size: number of images in your test dataset
 # num_runs: number of times you plan to iterate through the whole dataset
 # the following 2 arguments are mutually exclusive:
 # num_fault_per_image: how many faults should be injected per image
@@ -63,9 +64,10 @@ run_type: single
 # a: rnd_mode (either neurons or weights) the number of faults is calculated based on the number of relevant neurons
 # or weights respectively in the model
 # b: layer_types (either conv2d, conv3d or fcc) relevant neurons or weights are those related to the selected layer type
-num_runs: 1000
+dataset_size: 1 # keep at 1 for weight injection if used only once per epoch
+num_runs: 600
 # you can only set one of num_faults_per_image or max_fault_rate
-max_faults_per_image: 1
+max_faults_per_image: 10
 #max_fault_rate: 0.01
 
 # define if injected faulty values are to be created randomly (one per run)
@@ -87,7 +89,7 @@ value_type: random
 # conv3d: 3D convolution layer
 # fcc: fully connected layer = nn.Linear type in pytorch
 
-layer_types: [conv2d, fcc]
+layer_types: [conv2d]
 
 #####################################################################################
 #                           Random fault definition                                 #
@@ -200,11 +202,11 @@ st_value: [1200,30,2000]
 # ptf_batch_size: number of images processed at the same time
 # ptf_H: 224
 # ptf_W: 224
-ptf_H: 370
-ptf_W: 1224
+ptf_H: 100
+ptf_W: 100
 ptf_D: -1
 ptf_C: 3
-ptf_batch_size: 24
+ptf_batch_size: 50
 
 #####################################################################################
 #                           Data set definition                                     #
@@ -219,5 +221,5 @@ ds_test_size: 10
 ####################################################################################
 #                           User fault-file save location                           #
 ####################################################################################
-save_fault_file_dir: 'result_files'
+save_fault_file_dir: 'result_files/msb_runs/'
 # save_fault_file_dir: 'result_files/imagenet/'

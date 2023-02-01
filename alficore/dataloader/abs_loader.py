@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 """
 Abstract class to define necessary functions for each data loader
 
@@ -159,4 +156,3 @@ class Abstract_Loader(ABC):
         self.datagen_iter = iter(self.data_loader)
         self.data_incoming = True
         self.datagen_iter_cnt = 0
-

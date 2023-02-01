@@ -132,6 +132,7 @@ def convert_to_coco_json(dataloader, dataset_name, output_file, allow_cached=Tru
     # Path.mkdir(os.path.dirname(output_file), exist_ok=True)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     ## remove file lock if NFS file system is being used to store the results/json files
+    move_file = False
     with FileLock(output_file):
         if os.path.exists(output_file) and allow_cached:
             logger.warning(
@@ -146,9 +147,13 @@ def convert_to_coco_json(dataloader, dataset_name, output_file, allow_cached=Tru
             tmp_file = output_file + ".tmp"
             with io.open(tmp_file, "w") as f:
                 json.dump(coco_dict, f)
-            try:
-                shutil.move(tmp_file, output_file)
-            except:
-                logger.error(
-                f"remove file lock context in func convert_to_coco_json if NFS file system is being used to store the results/json files")
-                sys.exit()
+            # try:
+            #     shutil.move(tmp_file, output_file)
+            # except:
+            #     logger.error(
+            #     f"remove file lock context in func convert_to_coco_json if NFS file system is being used to store the results/json files")
+            #     sys.exit()
+            move_file = True
+
+    if move_file:
+        shutil.move(tmp_file, output_file)

@@ -78,7 +78,7 @@ def set_ranger_hooks_v2(net, resil=Ranger_trivial):
     return save_acts, hook_handles
 
 
-def set_ranger_hooks_v3(net, bnds, resil='ranger', mitigation=True, detector=True, correct_DUE=True):
+def set_ranger_hooks_v3(net, bnds, resil='ranger', mitigation=True, detector=True, correct_DUE=False):
     """
     Sets hooks into the entire model. Hooks have individual bounds but will all write to the same list act_list.
     :param net: pytorch model
@@ -93,19 +93,53 @@ def set_ranger_hooks_v3(net, bnds, resil='ranger', mitigation=True, detector=Tru
 
     hook_handles_out = []
     hook_list = []
-    cnt = 0
-    mitigation = False if resil=='ranger_trivial' else mitigation
-    correct_DUE = mitigation*(True if "due" in resil.lower() else False)
-    for _, m in net.named_modules():
-        if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]:
-            act_hook = Range_detector(bnds[cnt], mitigation=mitigation, detector=detector, resil=resil, correct_DUE=correct_DUE)
-            handle_out = m.register_forward_hook(act_hook)
-            hook_handles_out.append(handle_out)
-            hook_list.append(act_hook)
-            cnt += 1
+    if resil=='ranger_trivial' and bnds==[]:
+        return hook_handles_out, hook_list
+
+    try:
+        cnt = 0
+        mitigation = False if resil=='ranger_trivial' else mitigation
+        correct_DUE = mitigation*(True if "due" in resil.lower() else False)
+        for _, m in net.named_modules():
+            if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]:
+                act_hook = Range_detector(bnds[cnt], mitigation=mitigation, detector=detector, resil=resil, correct_DUE=correct_DUE)
+                handle_out = m.register_forward_hook(act_hook)
+                hook_handles_out.append(handle_out)
+                hook_list.append(act_hook)
+                cnt += 1
+    except:
+        print('Not able to integrate hooks, format of bound file correct?')
+
 
     return hook_handles_out, hook_list
 
+
+# def set_quantiles_hooks(net):
+#     """
+#     Sets hooks into the entire model. Hooks have individual bounds but will all write to the same list act_list.
+#     :param net: pytorch model
+#     :param bnds: list of bounds
+#     :param resil: type of resilience method (currently only "ranger")
+#     :param mitigation: flag whether or not Ranger mitigation should be applied, true by default.
+#     :param detector: If activated the number of activated ranger layer per batch is given as output.
+#     :return: act_list, list of saved information from Range_detector hooks.
+#     :return: hook_handles_out, list of handles to be cleared later
+#     :return: hook_list, list of hooks to be cleared later
+#     """
+
+#     hook_handles_out = []
+#     hook_list = []
+#     cnt = 0
+#     for _, m in net.named_modules():
+#         if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]:
+#             act_hook = Range_detector_quantiles() #bnds[cnt])
+#             handle_out = m.register_forward_hook(act_hook)
+#             hook_handles_out.append(handle_out)
+#             hook_list.append(act_hook)
+#             cnt += 1
+#             # print('type', type(m), m)
+
+#     return hook_handles_out, hook_list
 
 
 def set_quantiles_hooks(net):
@@ -125,12 +159,13 @@ def set_quantiles_hooks(net):
     hook_list = []
     cnt = 0
     for _, m in net.named_modules():
-        if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]:
+        if type(m) in [torch.nn.Conv2d]: # torch.nn.Linear
             act_hook = Range_detector_quantiles() #bnds[cnt])
             handle_out = m.register_forward_hook(act_hook)
             hook_handles_out.append(handle_out)
             hook_list.append(act_hook)
             cnt += 1
+            # print('type', type(m), m)
 
     return hook_handles_out, hook_list
 
@@ -153,7 +188,6 @@ def set_feature_trace_hooks(net):
     cnt = 0
     for _, m in net.named_modules():
         if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]:
-            # act_hook = Range_detector_quantiles() #bnds[cnt])
             act_hook = Range_detector_feature_trace() #bnds[cnt])
             handle_out = m.register_forward_hook(act_hook)
             hook_handles_out.append(handle_out)
@@ -161,6 +195,41 @@ def set_feature_trace_hooks(net):
             cnt += 1
 
     return hook_handles_out, hook_list
+
+
+def set_features_all_hooks(net):
+    """
+    Sets hooks into the entire model. Hooks have individual bounds but will all write to the same list act_list.
+    :param net: pytorch model
+    :param bnds: list of bounds
+    :param resil: type of resilience method (currently only "ranger")
+    :param mitigation: flag whether or not Ranger mitigation should be applied, true by default.
+    :param detector: If activated the number of activated ranger layer per batch is given as output.
+    :return: act_list, list of saved information from Range_detector hooks.
+    :return: hook_handles_out, list of handles to be cleared later
+    :return: hook_list, list of hooks to be cleared later
+    """
+
+    hook_handles_out = []
+    hook_list = []
+    cnt = 0
+    for _, m in net.named_modules():
+        # if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]:
+        if type(m) in [torch.nn.Conv2d]: # torch.nn.Linear
+            # act_hook = Range_detector_quantiles() #bnds[cnt])
+            # if cnt % 10 == 0: #only every 10th layer otherwise too bulky! NOTE: not working for lenet
+            act_hook = Range_detector_features_all() #bnds[cnt])
+            handle_out = m.register_forward_hook(act_hook)
+            hook_handles_out.append(handle_out)
+            hook_list.append(act_hook)
+            
+            cnt += 1
+
+        # if cnt > 2: #TODO remove later. Only monitor first two layers for simplicity.
+        #     break
+
+    return hook_handles_out, hook_list
+
 
 
 class Range_detector:
@@ -209,25 +278,46 @@ class Range_detector:
         self.act = []
         self.bnd = [0, 0]
         self.lay_info = [None, None]
-        
 
 class Range_detector_quantiles:
     def __init__(self):
         self.quant = []
+        self.qu_to_monitor = [0,10,20,30,40,50,60,70,80,90,100]
+        self.quantile_pre_summation = True
 
     def __call__(self, module, module_in, module_out):
         
-        tnsr = torch.flatten(module_out, start_dim=1, end_dim=- 1) #flatten all except for batch nr
-        q0, q10, q25, q50, q75, q100 = torch.quantile(tnsr, torch.tensor([0., 0.10, 0.25, 0.50, 0.75, 1.], device=tnsr.device), dim=1)
+        # print('before qu', torch.cuda.max_memory_allocated())
+        # if fsum applied first(?):
+        if self.quantile_pre_summation and len(module_out.shape) > 2:
+            dims_sum = np.arange(2,len(module_out.shape)).tolist()
+            tnsr = torch.sum(module_out, dim=dims_sum)
+        else:
+            tnsr = module_out
 
-        lst = np.vstack([q0.cpu().numpy(), q10.cpu().numpy(), q25.cpu().numpy(), q50.cpu().numpy(), q75.cpu().numpy(), q100.cpu().numpy()])
+        tnsr = torch.flatten(tnsr, start_dim=1, end_dim=- 1) #flatten all except for batch nr
+        quants_all = torch.quantile(tnsr, torch.tensor(np.array(self.qu_to_monitor)/100., device=tnsr.device, dtype=tnsr.dtype), dim=1)
+        # quants_all = tnsr #for alt time measurement
 
+        # for x in range(len(quants_all)): #assign all q-variables (q10, q20 etc.)
+        #     globals()[f"q{x}"] = quants_all[x].cpu().numpy()
+        # q0, q10, q20, q25, q30, q40, q50, q60, q70, q75, q80, q90, q100
+        # lst = np.vstack([q0.cpu().numpy(), q10.cpu().numpy(), q20.cpu().numpy(), q25.cpu().numpy(), q30.cpu().numpy(), q40.cpu().numpy(), q50.cpu().numpy(), q60.cpu().numpy(), q70.cpu().numpy(), q75.cpu().numpy(), q80.cpu().numpy(), q90.cpu().numpy(), q100.cpu().numpy()])
+        # lst = np.vstack(quants_all).T.tolist()
+        # self.quant.extend(lst.T.tolist())
 
-        self.quant.extend(lst.T.tolist())
-        # self.quant.extend(tnsr.cpu().numpy().tolist()) #TODO TODO: #only when all activations should be extracted
-
-
+        self.quant.extend(np.vstack(quants_all.cpu().numpy()).T.tolist())
+        
+        # print('after qu', torch.cuda.max_memory_allocated())
         return module_out
+
+    # def __call__(self, module, module_in, module_out):
+    #     tnsr = torch.flatten(module_out, start_dim=1, end_dim=- 1) #flatten all except for batch nr
+    #     q0, q10, q25, q50, q75, q100 = torch.quantile(tnsr, torch.tensor([0., 0.10, 0.25, 0.50, 0.75, 1.], device=tnsr.device), dim=1)
+    #     lst = np.vstack([q0.cpu().numpy(), q10.cpu().numpy(), q25.cpu().numpy(), q50.cpu().numpy(), q75.cpu().numpy(), q100.cpu().numpy()])
+    #     self.quant.extend(lst.T.tolist())
+    #     # self.quant.extend(tnsr.cpu().numpy().tolist()) #TODO TODO: #only when all activations should be extracted
+    #     return module_out
 
     def clear(self):
         self.quant = []
@@ -242,7 +332,7 @@ class Range_detector_feature_trace:
         
         if len(module_out.shape) > 2:
             dims_sum = np.arange(2,len(module_out.shape)).tolist()
-            lst = torch.sum(module_out, dim=dims_sum).tolist()
+            lst = torch.sum(module_out, dim=dims_sum).tolist() 
         else:
             lst = module_out.tolist()
 
@@ -251,8 +341,25 @@ class Range_detector_feature_trace:
         return module_out
 
     def clear(self):
-        # self.bnd = [0, 0]
         self.quant = []
+        
+        
+class Range_detector_features_all:
+    def __init__(self):
+        self.quant = []
+        # self.bnd = bnd #specific bound for that hook (format [min, max])
+
+    def __call__(self, module, module_in, module_out):
+        
+        lst = module_out.tolist()
+
+        self.quant.extend(lst)
+
+        return module_out
+
+    def clear(self):
+        self.quant = []
+
 
 
 def run_trace_hooks(trace_output, trace_hook_handles_out):
@@ -375,7 +482,7 @@ def set_ranger_hooks_ReLU(net):
     cnt = 0
     for name, m in net.named_modules():
         # print('names', name, m)
-        if type(m) in [torch.nn.ReLU, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]: #any type of activation function!
+        if type(m) in [torch.nn.Conv2d]: #, torch.nn.LeakyReLU, torch.nn.ELU, torch.nn.PReLU, torch.nn.Sigmoid, torch.nn.modules.activation.SiLU]: #any type of activation function!
             # print('Ranger hook set', type(m), name)
             save_output = OutputHook(lay_info=[cnt, name])
             handle_out = m.register_forward_hook(save_output)
@@ -581,46 +688,32 @@ class Save_nan_inf:
     Inputs is list with dims: nr of layers, nr of images in batch, 2 for nan, inf.
     """
     def __init__(self):
-        # self.inputs = []
         self.outputs = []
+        self.hooked_layers = []
+        self.unhooked_layers = []
 
     def __call__(self, module, module_in, module_out):
         """
         Sequential and Bottleneck containers input/output is not considered here (skipped) for clearer monitoring.
         """
-        ## to track the inputs also for run_with_debug_hooks_v2, uncomment below three lines
-        # input_nan_flags = module_in[0].isnan() # first index because incoming tensor wrapped as tuple
-        # input_inf_flags = module_in[0].isinf()
-        # self.inputs.append([[input_nan_flags[i].sum().item() > 0, input_inf_flags[i].sum().item() > 0] for i in range(len(input_nan_flags))])
-        try:
+        if isinstance(module_out, torch.Tensor):
             output_nan_flags = module_out.isnan() # outgoing tensor not wrapped
-        except:
-            output_nan_flags = np.array([[0]])
-        try:
-            output_inf_flags = module_out.isinf() # outgoing tensor not wrapped
-        except:
-            output_inf_flags = np.array([[0]])
-        # try:
-        if not isinstance(module_out, torch.Tensor):
-            try:
-                assert len(list(module_out.keys()))==1, "module_out has more than 1 output: {}".format(list(module_out.keys()))
-                moduleout = module_out[list(module_out.keys())[0]]
-                output_nan_flags = moduleout.isnan()
-                output_inf_flags = moduleout.isinf()
-                monitors = np.array([[output_nan_flags[i].sum().item() > 0, output_inf_flags[i].sum().item() > 0] for i in range(len(output_nan_flags))])
-            except:
-                ## accessing boxes if module_out contains only Boxes -> specific to 2 stage detectors like faster-rcnn (detectron2)
-                return None
+            output_inf_flags = module_out.isinf()
+            dims = len(output_nan_flags.shape)
+            monitors = [(torch.sum(output_nan_flags, dim=tuple(range(1,dims))) > 0).cpu().numpy(), (torch.sum(output_inf_flags, dim=tuple(range(1,dims))) > 0).cpu().numpy()]
+            self.outputs.append(monitors)
+            # if module.__module__ not in self.hooked_layers:
+            self.hooked_layers.append(module.__module__)
         else:
-            try:
-                monitors = np.array([[output_nan_flags[i].sum().item() > 0, output_inf_flags[i].sum().item() > 0] for i in range(len(output_nan_flags))])
-            except:
-                x=0
-        self.outputs.append(monitors)
+            # if module.__module__ not in self.unhooked_layers:
+            self.unhooked_layers.append(module.__module__)
+            
+
 
     def clear(self):
-        # self.inputs = []
         self.outputs = []
+        self.hooked_layers = []
+        self.unhooked_layers = []
 
 class Save_penult_layer:
     """
@@ -700,13 +793,14 @@ def set_nan_inf_hooks(net):
     save_nan_inf = Save_nan_inf()
     hook_handles = [] #handles list could be used to remove hooks later, here not used
     hook_layer_names = []
-    # cnt = 0
     for _, m in net.named_modules():
-        if np.all([x not in str(type(m)) for x in ['Sequential', 'ModuleList', 'torchvision.models', 'resiliency_methods', 'torchvision.ops.feature', 'My', 'models.yolo.Detect', 'models.yolo.Model', 'models.common']]):
+        if np.all([x not in str(type(m)) for x in ['Sequential', 'ModuleList']]):
+        # if 'torch.nn.' in str(type(m)):
             handle_in_out = m.register_forward_hook(save_nan_inf)
             hook_handles.append(handle_in_out)
             hook_layer_names.append(m.__module__)
             # print('hook set for layer', type(m)) #
+
     return save_nan_inf, hook_handles, hook_layer_names
 
 def run_with_debug_hooks_v3(net, image, bnds, ranger_activity, nan_inf_activity, resil=Ranger_trivial):
@@ -906,36 +1000,30 @@ def run_with_debug_hooks_v2(net, image):
 
     return corrupted_output, nan_dict, inf_dict
 
-def run_nan_inf_hooks(save_nan_inf, hook_handles, hook_layer_names):
+def run_nan_inf_hooks(save_nan_inf, hook_handles, layers_with_hooks):
 
     nan_dict = {'relu_in': [], 'relu_out': [], 'conv_in': [], 'conv_out': [], 'bn_in': [], 'bn_out': [], 'relu_in_glob': [], 'relu_out_glob': [], \
         'conv_in_glob': [], 'conv_out_glob': [], 'bn_in_glob': [], 'bn_out_glob': [], 'overall_in': [], 'overall_out': [], 'overall': [], 'flag': False, 'first_occurrence': [], 'first_occur_compare': []}
     inf_dict = {'relu_in': [], 'relu_out': [], 'conv_in': [], 'conv_out': [], 'bn_in': [], 'bn_out': [], 'relu_in_glob': [], 'relu_out_glob': [], \
         'conv_in_glob': [], 'conv_out_glob': [], 'bn_in_glob': [], 'bn_out_glob': [], 'overall_in': [], 'overall_out': [], 'overall': [], 'flag': False, 'first_occurrence': []}
 
-    # save_nan_inf, hook_handles, hook_layer_names = set_nan_inf_hooks(net)
-    # corrupted_output = net(image)len()
 
     nan_inf_out = np.array(save_nan_inf.outputs) #format of nan_inf_in and _out is a list of length nr_network_layers and two columns with True/False for each layer depending on whether nan, infs were found or not.
-    
+    # Note: layers_with_hooks is list of names where hooks were set, save_nan_inf.hooked_layers are hooks that were actually called.
+    hook_layer_names = save_nan_inf.hooked_layers
+    # print('layers with hooks but no tensor output', save_nan_inf.unhooked_layers)
+
     save_nan_inf.clear() #clear the hook lists, otherwise memory leakage
     for i in range(len(hook_handles)):
         hook_handles[i].remove()
 
-    # Process naninf
-    # nan_all_layers_in = np.array(nan_inf_in)[:, :, 0] #rows are layers, cols are images
-    # nan_dict["overall_in"] = [np.where(nan_all_layers_in[:, u] == True)[0].tolist() for u in range(len(nan_all_layers_in[0]))]
-    #
-    try:
-        nan_all_layers_out = np.array(nan_inf_out)[:, :, 0]
-    except:
-        nan_all_layers_out = np.array(nan_inf_out).reshape(-1,1,2)[:,:,0]
-
-    nan_dict["overall_out"] = [np.where(nan_all_layers_out[:, u] == True)[0].tolist() for u in range(len(nan_all_layers_out[0]))]
-    # 
-    # nan_dict['overall'] = [np.unique(nan_dict['overall_in'][i] + nan_dict['overall_out'][i]).tolist() for i in range(len(inf_dict['overall_out']))] #in and out combined
-    nan_dict['overall'] = [np.unique(nan_dict['overall_out'][i]).tolist() for i in range(len(nan_dict['overall_out']))] 
+    # Process nan
+    nan_all_layers_out = np.array(nan_inf_out)[:, 0, :]
+    nan_dict["overall_out"] = [list(np.where(n==True)[0]) for n in nan_all_layers_out.T]
+    nan_dict['overall'] = nan_dict["overall_out"] #no in here
+    #[np.unique(nan_dict['overall_out'][i]).tolist() for i in range(len(nan_dict['overall_out']))] 
     nan_dict['flag'] = [x != [] for x in nan_dict['overall']]
+
     for i in range(len(nan_dict['overall'])):
         first_nan_layer_index = nan_dict['overall'][i]
         if first_nan_layer_index: #TODO:
@@ -948,16 +1036,11 @@ def run_nan_inf_hooks(save_nan_inf, hook_handles, hook_layer_names):
             nan_dict['first_occurrence'].append([])
 
 
-    # inf_all_layers_in = np.array(nan_inf_in)[:, :, 1]
-    try:
-        inf_all_layers_out = np.array(nan_inf_out)[:, :, 1]
-    except:
-        inf_all_layers_out = np.array(nan_inf_out).reshape(-1,1,2)[:,:,1]
-
-    inf_dict["overall_out"] = [np.where(inf_all_layers_out[:, u] == True)[0].tolist() for u in range(len(inf_all_layers_out[0]))]
-    # 
-    # inf_dict['overall'] = [np.unique(inf_dict['overall_in'][i] + inf_dict['overall_out'][i]).tolist() for i in range(len(inf_dict['overall_out']))] #in and out combined
-    inf_dict['overall'] = [np.unique(inf_dict['overall_out'][i]).tolist() for i in range(len(inf_dict['overall_out']))] 
+    #Process inf 
+    inf_all_layers_out = np.array(nan_inf_out)[:, 1, :]
+    inf_dict["overall_out"] = [list(np.where(n==True)[0]) for n in inf_all_layers_out.T]
+    inf_dict['overall'] = inf_dict["overall_out"]
+    #[np.unique(inf_dict['overall_out'][i]).tolist() for i in range(len(inf_dict['overall_out']))] 
     inf_dict['flag'] = [x != [] for x in inf_dict['overall']]
 
     for i in range(len(inf_dict['overall'])):
@@ -989,6 +1072,8 @@ def run_nan_inf_hooks(save_nan_inf, hook_handles, hook_layer_names):
 
     return nan_dict, inf_dict
 
+
+
 ## deprecated
 def run_with_debug_hooks_simple(net, image):
 
@@ -1011,10 +1096,10 @@ def run_with_debug_hooks_simple(net, image):
     # nan_all_layers_in = np.array(nan_inf_in)[:, :, 0] #rows are layers, cols are images
     # nan_dict["overall_in"] = [np.where(nan_all_layers_in[:, u] == True)[0].tolist() for u in range(len(nan_all_layers_in[0]))]
     #
+    # Nan inf occurrences
     nan_all_layers_out = np.array(nan_inf_out)[:, :, 0]
     nan_dict["overall_out"] = [np.where(nan_all_layers_out[:, u] == True)[0].tolist() for u in range(len(nan_all_layers_out[0]))]
-    #
-    # nan_dict['overall'] = [np.unique(nan_dict['overall_in'][i] + nan_dict['overall_out'][i]).tolist() for i in range(len(nan_dict['overall_out']))] #in and out combined
+
     nan_dict['overall'] = [np.unique(nan_dict['overall_out'][i]).tolist() for i in range(len(nan_dict['overall_out']))] 
     nan_dict['flag'] = [x != [] for x in nan_dict['overall']]
     for i in range(len(nan_dict['overall'])):
@@ -1025,13 +1110,10 @@ def run_with_debug_hooks_simple(net, image):
         else:
             nan_dict['first_occurrence'].append([])
 
-    # inf_all_layers_in = np.array(nan_inf_in)[:, :, 1]
-    # inf_dict["overall_in"] = [np.where(inf_all_layers_in[:, u] == True)[0].tolist() for u in range(len(inf_all_layers_in[0]))]
-    #
+    # Inf occurrences
     inf_all_layers_out = np.array(nan_inf_out)[:, :, 1]
     inf_dict["overall_out"] = [np.where(inf_all_layers_out[:, u] == True)[0].tolist() for u in range(len(inf_all_layers_out[0]))]
-    # 
-    # inf_dict['overall'] = [np.unique(inf_dict['overall_in'][i] + inf_dict['overall_out'][i]).tolist() for i in range(len(inf_dict['overall_out']))] #in and out combined
+
     inf_dict['overall'] = [np.unique(inf_dict['overall_out'][i]).tolist() for i in range(len(inf_dict['overall_out']))] 
     inf_dict['flag'] = [x != [] for x in inf_dict['overall']]
     for i in range(len(inf_dict['overall'])):
@@ -1059,6 +1141,7 @@ def run_with_debug_hooks_simple(net, image):
             nan_dict['first_occur_compare'].append([])
 
     return corrupted_output, nan_dict, inf_dict
+
 
 def run_simscore_hooks(save_penult_layer, hook_handles):
 
@@ -1108,4 +1191,5 @@ def print_nan_inf_hist_v2(net, nan_dict_corr, inf_dict_corr):
         info.append([u, layer_list[u], 'in', in_info, 'out', out_info])
 
     print(tabulate(info)) #, headers=['Name', 'Age']
+
 

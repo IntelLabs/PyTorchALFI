@@ -1,6 +1,3 @@
-# Copyright 2022 Intel Corporation.
-# SPDX-License-Identifier: MIT
-
 from math import ceil
 import pickle
 import logging
@@ -18,14 +15,21 @@ import time
 from os.path import dirname as up
 from numpy import quantile
 import json
+import torchvision
+from copy import deepcopy
+import cv2
 
 # from alficore import dataloader
-from alficore.dataloader.coco_loader import CoCo_obj_det_native_dataloader
 from alficore.dataloader.kitti_loader import Kitti_obj_det_native_dataloader
-from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks_v3, get_max_min_lists_in, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks
+from alficore.dataloader.coco_loader import CoCo_obj_det_native_dataloader
+from alficore.dataloader.ppp_loader import PPP_obj_det_dataloader
+# from alficore.dataloader.lyft_loader import Lyft_dataloader
+from alficore.dataloader.robo_loader import Robo_obj_det_dataloader
+from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks_v3, get_max_min_lists_in, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks, set_feature_trace_hooks, set_features_all_hooks
 from alficore.ptfiwrap_utils.utils import read_yaml
 from alficore.wrapper.ptfiwrap import ptfiwrap
 from alficore.evaluation.coco_evaluation import COCOEvaluator
+from alficore.evaluation.baseline_evaluation import BASELINEevaluator
 from alficore.resiliency_methods.ranger import Ranger, Ranger_trivial, Ranger_BackFlip, Ranger_Clip, Ranger_FmapAvg, Ranger_FmapRescale
 
 resil_methods = {"ranger": Ranger, "ranger_trivial": Ranger_trivial, "ranger_backFlip": Ranger_BackFlip, "ranger_clip": Ranger_Clip, "ranger_FmapAvg": Ranger_FmapAvg, "ranger_FmapRescale": Ranger_FmapRescale}
@@ -72,7 +76,6 @@ class TestErrorModels_ObjDet:
         self.num_runs   = kwargs.get("num_runs", None)
         self.resume_inj = kwargs.get("resume_inj", False)
         self.resume_epoch = 0
-        self.ranger_multiplier = kwargs.get("ranger_multiplier", 1)
 
         if self.ORIG_MODEL is not None:
             self.ORIG_MODEL.eval()
@@ -86,15 +89,20 @@ class TestErrorModels_ObjDet:
         """
         Features to monitor
         """
-        self.ranger_detector    = kwargs.get("ranger_detector", False)
+        self.ranger_detector    = kwargs.get("ranger_detector", True)
         self.inf_nan_monitoring = kwargs.get("inf_nan_monitoring", True)
         self.sim_score          = kwargs.get("sim_score", False) 
         self.activation_trace          = kwargs.get("activation_trace", False)
         self.quant_extr = kwargs.get("quant_monitoring", False)
+        self.ftrace_extr = kwargs.get("ftrace_monitoring", False)
         if self.quant_extr:
             self.quant_list_corr = []
             self.quant_list_resil = []
             self.quant_list_resil_corr = []
+        if self.ftrace_extr:
+            self.ftrace_list_corr = []
+            self.ftrace_list_resil = []
+            self.ftrace_list_resil_corr = []
         if self.ranger_detector:
             assert self.ranger_bounds is not None, "Ranger detector is True, but bounds are not set to be used by the detector"
             ## recording ranger activations
@@ -121,6 +129,13 @@ class TestErrorModels_ObjDet:
         self._outputdir       = kwargs.get("result_files", None)
         self.num_faults        = kwargs.get("num_faults", None)
         self.model_name        = kwargs.get("model_name", None)
+        
+
+        self.exp_type = kwargs.get("exp_type", 'hwfault') #hwfault, Gaussian_blur, Gaussian_noise, 
+        self.corr_magn = kwargs.get("corr_magn", 0)
+        self.corr_img = not (self.exp_type == 'hwfault')
+        self.mod_img = None
+
         self.copied_scenario_data = {}
 
         self.dl_attr.dl_dataset_name = self.dl_attr.dl_dataset_name.lower()
@@ -137,11 +152,11 @@ class TestErrorModels_ObjDet:
         self.scenario_is_modified = False
         if self._outputdir is None :
             if self.disable_FI or not self.reference_parser:
-                self._outputdir = os.path.join(os.getcwd(), 'result_files', 'output_{}_{}_{}'.format(self.time_based_uuid, self.model_name, self.dl_attr.dl_dataset_name))
+                self._outputdir = os.path.join(os.getcwd(), 'result_files', 'output_{}'.format(self.dl_attr.dl_dataset_name))
             else:
                 self._outputdir = self.reference_parser.save_fault_file_dir
         else:
-            self._outputdir = os.path.join(os.getcwd(), self._outputdir, 'output_{}_{}_{}'.format(self.time_based_uuid, self.model_name, self.dl_attr.dl_dataset_name))
+            self._outputdir = os.path.join(os.getcwd(), self._outputdir, 'output_{}'.format(self.dl_attr.dl_dataset_name))
         self.outputdir = self._outputdir
 
         if self.disable_FI:
@@ -152,6 +167,7 @@ class TestErrorModels_ObjDet:
                 self.model_scenario_file = list(Path(os.path.dirname(self.fault_file)).glob('**/*.yml'))[0]
                 self.copied_scenario_data = read_yaml(self.model_scenario_file)[0]
                 self.copy_yml_attr(self.copied_scenario_data)
+                # self.model_scenario["ptf_batch_size"] = self.dl_attr.dl_batch_size if data["rnd_mode"] == "neurons" else data["rnd_mode"]
                 if (not (self.model_scenario["inj_policy"] == "per_batch") and self.model_scenario["rnd_mode"] == "weights"):
                     self.model_scenario["ptf_batch_size"] = self.dl_attr.dl_batch_size
                 else:
@@ -198,11 +214,16 @@ class TestErrorModels_ObjDet:
 
     def __ptfi_dataloader(self):
        
-        if 'coco' in self.dl_attr.dl_dataset_name.lower():
-            self.dataloader = CoCo_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name=self.model_name)
-        if self.dl_attr.dl_dataset_name=='kitti':
+        if 'kitti' in self.dl_attr.dl_dataset_name.lower():
             self.dataloader = Kitti_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
-
+        if 'coco' in self.dl_attr.dl_dataset_name.lower():
+            self.dataloader = CoCo_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
+        if self.dl_attr.dl_dataset_name=='ppp':
+            self.dataloader = PPP_obj_det_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
+        # if self.dl_attr.dl_dataset_name=='lyft':
+        #     self.dataloader = Lyft_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
+        if self.dl_attr.dl_dataset_name=='robo':
+            self.dataloader = Robo_obj_det_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
 
     def get_nan_inf_columns(self):
         output_columns = []
@@ -239,8 +260,15 @@ class TestErrorModels_ObjDet:
             num_runs = num_runs + 1 - (self.resume_epoch if self.resume_inj else 0)  ## coz _epoch is 0 indexed based
             print("current epoch: {}".format(num_runs))
 
+            # runset_length = num_runs*self.dataloader.dataset_length*self.num_faults #for any injection policy now as it reflects the actual samples that were seen
+
             if self.reference_parser.inj_policy == "per_image":
                 runset_length = num_runs*self.dataloader.dataset_length*self.num_faults
+                # if self.reference_parser.rnd_mode == 'neurons':
+                #     runset_length = num_runs*self.dataloader.dataset_length*self.num_faults
+                # elif self.reference_parser.rnd_mode == 'weights':
+                #     runset_length = num_runs*self.num_faults*self.dataloader.dataset_length
+                #     # runset_length = num_runs*self.num_faults
             elif self.reference_parser.inj_policy == "per_epoch":
                 if self.reference_parser.rnd_mode == 'neurons':
                     runset_length = num_runs*self.num_faults*self.dataloader.dataset_length
@@ -275,29 +303,31 @@ class TestErrorModels_ObjDet:
                             {} dont match".format(self.curr_epoch, used_model, len(ranger_actvns), num_inferences)
 
                 # TODO: For per_epoch should unify policy in set_ptfi_batch_pointer
-                if self.reference_parser.inj_policy == "per_image" or self.reference_parser.inj_policy == "per_batch":
-                    if self.reference_parser.rnd_mode == 'neurons':
-                        assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                    elif self.reference_parser.rnd_mode == 'weights':
-                        assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                elif self.reference_parser.inj_policy=='per_epoch':
-                    if self.reference_parser.rnd_mode == 'neurons':
-                        assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                        assert (bit_flip_monitor[0:len(bit_flip_monitor):self.dataloader.dataset_length][:num_runs] == self.reference_wrapper.runset[6,:][:num_runs]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                    elif self.reference_parser.rnd_mode == 'weights':
-                        # assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][0:self.reference_wrapper.runset_updated.shape[1]:self.dataloader.dataset_length][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                        assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:num_runs]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                if self.corr_img:
+                    assert (bit_flip_monitor == None).all() and (bit_flips_direc == None).all(), "Mode is image corruption but bit flips have been found too!"
+                else:
+                    if self.reference_parser.inj_policy == "per_image" or self.reference_parser.inj_policy == "per_batch":
+                        if self.reference_parser.rnd_mode == 'neurons':
+                            assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                        elif self.reference_parser.rnd_mode == 'weights':
+                            assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                    elif self.reference_parser.inj_policy=='per_epoch':
+                        if self.reference_parser.rnd_mode == 'neurons':
+                            assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                            assert (bit_flip_monitor[0:len(bit_flip_monitor):self.dataloader.dataset_length][:num_runs] == self.reference_wrapper.runset[6,:][:num_runs]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                        elif self.reference_parser.rnd_mode == 'weights':
+                            # assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][0:self.reference_wrapper.runset_updated.shape[1]:self.dataloader.dataset_length][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                            assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:num_runs]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
 
+                    assert len(bit_flip_monitor[bit_flip_monitor==None]) == 0, "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
+                        {} dont match".format(num_runs, used_model, len(bit_flip_monitor), len(bit_flip_monitor)-len(bit_flip_monitor[bit_flip_monitor==None]))
+                    assert len(bit_flips_direc[bit_flips_direc==None]) == 0, "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
+                        {} dont match".format(num_runs, used_model, len(bit_flips_direc), len(bit_flips_direc)-len(bit_flips_direc[bit_flips_direc==None]))
 
-                assert len(bit_flip_monitor[bit_flip_monitor==None]) == 0, "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
-                    {} dont match".format(num_runs, used_model, len(bit_flip_monitor), len(bit_flip_monitor)-len(bit_flip_monitor[bit_flip_monitor==None]))
-                assert len(bit_flips_direc[bit_flips_direc==None]) == 0, "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
-                    {} dont match".format(num_runs, used_model, len(bit_flips_direc), len(bit_flips_direc)-len(bit_flips_direc[bit_flips_direc==None]))
-
-                assert len(bit_flip_monitor) == len(bit_flips_direc), "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
-                    {} dont match".format(num_runs, used_model, len(bit_flip_monitor), len(bit_flips_direc))
-                assert runset_length == len(bit_flips_direc), "Epoch- {}: {} Sanity check: runset len after tiling (if inj policy is per epoch or per batch) - \
-                    {} and total number of bit flips captured - {} dont match".format(num_runs, used_model, runset_length, len(bit_flips_direc))
+                    assert len(bit_flip_monitor) == len(bit_flips_direc), "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
+                        {} dont match".format(num_runs, used_model, len(bit_flip_monitor), len(bit_flips_direc))
+                    assert runset_length == len(bit_flips_direc), "Epoch- {}: {} Sanity check: runset len after tiling (if inj policy is per epoch or per batch) - \
+                        {} and total number of bit flips captured - {} dont match".format(num_runs, used_model, runset_length, len(bit_flips_direc))
 
 
     def __ranger_detector_with_hooks(self, save_acts, hook_handles, hook_list):
@@ -348,6 +378,7 @@ class TestErrorModels_ObjDet:
             print("Oops!  That was no valid bounds. Check the bounds and Try again...")
         return activated
 
+    
     def __clean_quantiles_hooks(self, hook_handles, hook_list):
         quant_list = []
         try:
@@ -365,12 +396,12 @@ class TestErrorModels_ObjDet:
 
         return quant_list
 
+
     def __save_model_scenario(self):
-        if (not self.copy_yml_scenario and not self.disable_FI) or self.create_new_folder:
+        if not self.copy_yml_scenario and not self.disable_FI:
             model_scenario_yml = os.path.join(self.outputdir, self.dataset_name, self.func + '_' +
                     str(self.num_faults) + '_' + str(self.num_runs) + '_' + str(self.dl_attr.dl_batch_size) + 'bs' + '_' + self.dl_attr.dl_dataset_name + '_model_scenario.yml')
             data = self.model_scenario
-            data['ranger_multiplier'] = self.ranger_multiplier
             data['resil_name']        = self.resil_name
             data['sensor_channels']   = self.sensor_channels
             data['dataset']           = self.dataset_name
@@ -385,6 +416,19 @@ class TestErrorModels_ObjDet:
                 yaml.dump(data, outfile, default_flow_style=False)
 
 
+    # def __ptfi_evaluator(self):
+    #     if self.evaluator_type == 'coco':
+    #         self.ORIG_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, outputdir=self.outputdir, model_type = 'orig_model', sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+    #         if self.orig_model_FI_run:
+    #             self.CORR_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, outputdir=self.outputdir, model_type='corr_model', sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+    #         if self.resil_model_run:
+    #             self.RESIL_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, outputdir=self.outputdir, model_type = '{}_model'.format(self.resil_name), sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+    #             if self.resil_model_FI_run:
+    #                 self.RESIL_CORR_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, outputdir=self.outputdir, model_type='{}_corr_model'.format(self.resil_name), sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+    #     if self.evaluator_type == 'baseline':
+    #         self.ORIG_MODEL_eval = BASELINEevaluator(dataset_name=self.dataset_name, outputdir=self.outputdir, model_type = 'orig_model', sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+            
+            
     def __ptfi_evaluator(self):
         if self.evaluator_type == 'coco':
             self.ORIG_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, dataloader=self.dataloader, outputdir=self.outputdir, model_type = 'orig_model', sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
@@ -394,6 +438,10 @@ class TestErrorModels_ObjDet:
                 self.RESIL_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, dataloader=self.dataloader, outputdir=self.outputdir, model_type = '{}_model'.format(self.resil_name), sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
                 if self.resil_model_FI_run:
                     self.RESIL_CORR_MODEL_eval = COCOEvaluator(dataset_name=self.dataset_name, dataloader=self.dataloader, outputdir=self.outputdir, model_type='{}_corr_model'.format(self.resil_name), sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+        if self.evaluator_type == 'baseline':
+            self.ORIG_MODEL_eval = BASELINEevaluator(dataset_name=self.dataset_name, outputdir=self.outputdir, model_type = 'orig_model', sampleN=self.dl_attr.dl_sampleN, model_name=self.model_name)
+            
+
 
     def __run_inference_orig_model(self):
         '''
@@ -404,6 +452,15 @@ class TestErrorModels_ObjDet:
             self.ORIG_MODEL_eval.process(self.dataloader.data, outputs)
             del outputs
 
+    # def __run_inference_corr_image(self):
+    #     '''
+    #     ORIG MODEL inference and evaluation
+    #     '''      
+    #     # if self.golden_epoch:
+    #     outputs = self.ORIG_MODEL(self.dataloader.data)
+    #     self.ORIG_MODEL_eval.process(self.dataloader.data, outputs)
+    #     del outputs
+
     def __run_inference_corr_model(self):
         '''
         CORR MODEL inference and evaluation
@@ -411,7 +468,10 @@ class TestErrorModels_ObjDet:
         Note: resume_inj should be used only when fault file is passed.
         '''
         try:
-            corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial')
+            # add flag here? #TODO: self.CORR_MODEL -> self.ORIG
+            if self.corr_img:
+                self.CORR_MODEL = self.ORIG_MODEL #ORIG_MODEL is none?
+            corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial', corr_img=self.corr_img, flt_info=False)
             if self.inf_nan_monitoring:
                 self.nan_flag_image_corr_model.extend([a for a in nan_dict_corr['flag']]) #Flag true or false per image depending if nan found at any layer
                 self.nan_inf_flag_image_corr_model.extend([nan_dict_corr['flag'][h] or inf_dict_corr['flag'][h] for h in range(len(inf_dict_corr['flag']))])
@@ -421,8 +481,10 @@ class TestErrorModels_ObjDet:
                 self.corr_ranger_actvns.extend(list(detected_activations))
             if self.quant_extr:
                 self.quant_list_corr.extend(quant_list)
+            if self.ftrace_extr:
+                self.ftrace_list_corr.extend(ftrace_list)
             self.CORR_MODEL_eval.process(self.dataloader.data, corr_outputs)
-            del corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list
+            del corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list
         except:
             """
             if one of the batch element's output doesnt produce a valid output, then
@@ -433,6 +495,8 @@ class TestErrorModels_ObjDet:
             """
             self.logger.warning("fault injection has caused the corr model to crash; storing empty results for this batch, see TODO\n\
                                 The faults are : {}".format(self.reference_wrapper.CURRENT_FAULTS))
+            import sys
+            sys.exit() # TODO TODO remove later 
             outputs = [{"instances":torch.empty(0, 0)} for _ in range(len(self.dataloader.data))]
             if self.ranger_detector:
                 activation_freq = [0 for i in range(self.dataloader.curr_batch_size)]
@@ -451,8 +515,7 @@ class TestErrorModels_ObjDet:
         '''
         if self.golden_epoch:
             try:
-                resil_outputs, nan_dict_resil, inf_dict_resil, detected_activations, penulLayer, quant_list = self.attach_hooks(self.RESIL_MODEL, resil=self.resil_name.lower())
-
+                resil_outputs, nan_dict_resil, inf_dict_resil, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_MODEL, resil=self.resil_name.lower())
                 if self.inf_nan_monitoring:
                     self.nan_flag_image_resil_model.extend([a for a in nan_dict_resil['flag']]) #Flag true or false per image depending if nan found at any layer
                     self.nan_inf_flag_image_resil_model.extend([nan_dict_resil['flag'][h] or inf_dict_resil['flag'][h] for h in range(len(inf_dict_resil['flag']))])
@@ -462,6 +525,8 @@ class TestErrorModels_ObjDet:
                     self.resil_ranger_actvns.extend(list(detected_activations))
                 if self.quant_extr:
                     self.quant_list_resil.extend(quant_list)
+                if self.ftrace_extr:
+                    self.ftrace_list_resil.extend(ftrace_list)
                 self.RESIL_MODEL_eval.process(self.dataloader.data, resil_outputs)
             except:
                 """
@@ -485,7 +550,9 @@ class TestErrorModels_ObjDet:
         Note: resume_inj should be used only when fault file is passed.
         '''
         try:
-            resil_corr_outputs, nan_dict_resil_corr, inf_dict_resil_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.RESIL_CORR_MODEL, resil=self.resil_name.lower())
+            if self.corr_img:
+                self.RESIL_CORR_MODEL = self.RESIL_MODEL
+            resil_corr_outputs, nan_dict_resil_corr, inf_dict_resil_corr, detected_activations, penulLayer, quant_list, ftrace_list = self.attach_hooks(self.RESIL_CORR_MODEL, resil=self.resil_name.lower(), corr_img=self.corr_img)
             if self.inf_nan_monitoring:
                 self.nan_flag_image_resil_corr_model.extend([a for a in nan_dict_resil_corr['flag']]) #Flag true or false per image depending if nan found at any layer
                 self.nan_inf_flag_image_resil_corr_model.extend([nan_dict_resil_corr['flag'][h] or inf_dict_resil_corr['flag'][h] for h in range(len(inf_dict_resil_corr['flag']))])
@@ -495,6 +562,8 @@ class TestErrorModels_ObjDet:
                 self.resil_corr_ranger_actvns.extend(list(detected_activations))
             if self.quant_extr:
                 self.quant_list_resil_corr.extend(quant_list)
+            if self.ftrace_extr:
+                self.ftrace_list_resil_corr.extend(ftrace_list)
             self.RESIL_CORR_MODEL_eval.process(self.dataloader.data, resil_corr_outputs)
         except:
             """
@@ -531,23 +600,79 @@ class TestErrorModels_ObjDet:
             if self.resil_model_FI_run:
                 self.__run_inference_resil_corr_model()
 
-    def attach_hooks(self, model, resil=None):
-        nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list = None, None, None, None, None
+        
+		
+    def attach_hooks(self, model, resil=None, **kwargs):
+        corr_img = kwargs.get('corr_img', False) #this way to distinguish orig and corr models
+        fault_info = kwargs.get('flt_info', False) #this way to distinguish orig and corr models
+        # exp_type = kwargs.get('exp_type', 'hwfault')
 
+        nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list = None, None, None, None, None, None
+        if self.inf_nan_monitoring:
+            save_nan_inf, hook_handles_nan_inf, hook_layer_names = set_nan_inf_hooks(model)
         if resil is not None and self.ranger_detector:
             # todo: adapt resil to accomodate different ranger methods
             hook_handles_acts, hook_list = set_ranger_hooks_v3(model, self.ranger_bounds, resil=resil, detector=self.ranger_detector)
-
-        if self.inf_nan_monitoring:
-            save_nan_inf, hook_handles_nan_inf, hook_layer_names = set_nan_inf_hooks(model)
-
         if self.sim_score:
             save_penult_layer, hook_handles_penult_layer, _ = set_simscore_hooks(model, self.model_name)
         if self.quant_extr:
-            hook_handles_quant, hook_list_quant = set_quantiles_hooks(model, self.ranger_bounds)
+            hook_handles_quant, hook_list_quant = set_quantiles_hooks(model)
+        if self.ftrace_extr:
+            hook_handles_ftrace, hook_list_ftrace = set_feature_trace_hooks(model)
+            # hook_handles_ftrace, hook_list_ftrace = set_features_all_hooks(model) #TODO: switch back if you like all features
 
-        output = model(self.dataloader.data)
+
+        # # Image corruptions
+        if corr_img:
+            assert self.exp_type in ["hwfault", 'Gaussian_blur', 'Gaussian_noise', 'Adjust_contrast'], 'exp_type is unknown, should be one of ["hwfault", "Gaussian_blur", "Gaussian_noise", "Adjust_contrast"].'
+
+            file_names = []
+            orig_imgs = []
+            for n in range(len(self.dataloader.data)):
+                orig_img = deepcopy(self.dataloader.data[n]['image']) #save uncorrupted image from dataloader for later
+                orig_imgs.append(orig_img)
+                
+                if self.mod_img is None: #if self.mod_image is None create mod image, otherwise use self.mod_image
+                    # Blur
+                    if self.exp_type == "Gaussian_blur":
+                        sig = self.corr_magn
+                        # sig = 3 #sigma = 1,2,3
+                        self.mod_img = torchvision.transforms.GaussianBlur((5,9), sigma=(sig,sig))(orig_img) #(21,21), sigma=(3,3) 
+
+
+                    # Noise
+                    elif self.exp_type == "Gaussian_noise":
+                        mean = 0
+                        # std = 10 #1,5,10
+                        std = self.corr_magn
+                        # noise = mean + std*torch.randn(orig_img.shape) #10 leads to 40% SDC, 1 to 17% SDC
+                        noise = np.random.normal(mean, std, orig_img.shape)
+                        noise = torch.tensor(noise).to(orig_img.device)
+                        # cv2.normalize(noisy_image, noisy_image, 0, 255, cv2.NORM_MINMAX, dtype=-1)
+                        self.mod_img = (orig_img + noise).to(torch.uint8)
+
+                    elif self.exp_type == "Adjust_contrast":
+                        contrast_factor = self.corr_magn # 0=gray, 1=original; 
+                        #use 0.5, 0.3
+                        self.mod_img = torchvision.transforms.functional.adjust_contrast(orig_img, contrast_factor) #new fault type 
+            
+                # remove temporarily file_path so its not loaded from original:
+                file_names.append(self.dataloader.data[n]['file_name'])
+                del self.dataloader.data[n]['file_name']
+                self.dataloader.data[n]['image'] = self.mod_img
+                self.mod_img = None #reset to generate new sample
+            
+            output = model(self.dataloader.data)
+
+            # output_path = '/home/fgeissle/fgeissle_ranger/test.png'
+            for n in range(len(self.dataloader.data)):
+                # visual_check(output, n, self.dataloader.data, output_path, self.dataset_name, model)
+                self.dataloader.data[n]['image'] = orig_imgs[n] #put back original image for next use
+                self.dataloader.data[n]['file_name'] = file_names[n] #put back file_name
+        else:
+            output = model(self.dataloader.data)
  
+
         if self.inf_nan_monitoring:
             nan_dict_corr, inf_dict_corr = run_nan_inf_hooks(save_nan_inf, hook_handles_nan_inf, hook_layer_names)
         if resil is not None and self.ranger_detector:
@@ -556,10 +681,69 @@ class TestErrorModels_ObjDet:
             penulLayer = run_simscore_hooks(save_penult_layer, hook_handles_penult_layer)
         if self.quant_extr:
             quant_list = self.__clean_quantiles_hooks(hook_handles_quant, hook_list_quant)
+
+            if fault_info:
+                # current_faults = self.reference_wrapper.runset_updated[:,:self.flt_counter]
+                # :self.dl_attr.dl_batch_size
+                # Only for bs 1 for now!
+                self.reference_wrapper.pytorchfi.OUTPUT_LOOKUP
+                self.reference_wrapper.pytorchfi.OUTPUT_SIZE
+                with open('layer_names_info_fi.txt', 'w') as f:
+                    for n in self.reference_wrapper.pytorchfi.OUTPUT_LOOKUP:
+                        f.write(str(n)+"\n")
+                import sys
+                sys.exit()
+
+                current_faults = self.reference_wrapper.get_fault_for_image(0) #image 0 in batch
+                values = self.reference_wrapper.pytorchfi.value_monitor[:,self.flt_counter-1]
+                if self.reference_parser.rnd_mode == 'neurons':
+                    current_lay = current_faults[1] #up to fault counter only
+                elif self.reference_parser.rnd_mode == 'weights':
+                    current_lay = current_faults[0]
+                print('layer of fault injection', current_lay, values)
+                print('overall', np.min(quant_list), np.max(quant_list))
+                # print('quants monitored', quant_list[current_lay])
+                print('at fault', np.min(quant_list[current_lay]), np.max(quant_list[current_lay]))
+                try:
+                    print('before fault', np.min(quant_list[:current_lay]), np.max(quant_list[:current_lay]))
+                except:
+                    x=0
+                try:
+                    print('after fault', np.min(quant_list[current_lay+1:]), np.max(quant_list[current_lay+1:]))
+                except:
+                    x=0
+                print('done')
+                if np.max(abs(values)) > 100*np.max(np.abs(quant_list[current_lay])): # or np.max(abs(values)) < 100*np.max(np.abs(quant_list[:current_lay])):
+                    print('unusual: quants dont reflect bit flip or earlier layers know?')
+                    # in layer 73, comes from two layers before? 71: comes from 1 layer before and moves to +2?
+
             if quant_list != []:
+                quant_list = self.fix_unusual_layers(quant_list)
                 quant_list = np.swapaxes(np.array(quant_list),0,1) #rearrange dimensions as image, layers, quantiles
 
-        return output, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list
+        if self.ftrace_extr:
+            ftrace_list = self.__clean_quantiles_hooks(hook_handles_ftrace, hook_list_ftrace)
+            if ftrace_list != []:
+                ftrace_list = np.swapaxes(np.array(ftrace_list),0,1) #rearrange dimensions as image, layers, quantiles
+
+        return output, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list, ftrace_list
+
+    def fix_unusual_layers(self, quant_list):
+        bs = self.dataloader.curr_batch_size
+        unusual_layers = (np.array([len(n) for n in quant_list]) != bs)
+        if unusual_layers.any():
+            print('Network has unusual layers...')
+            for x in range(len(unusual_layers)):
+                if unusual_layers[x]:
+                    mlt_factor = int(len(quant_list[x])/bs)
+                    if mlt_factor < 1:
+                        quant_list[x] = None
+                    elif mlt_factor > 1:
+                        quant_list[x] = (np.sum([quant_list[x][n*bs:(n+1)*bs] for n in range(mlt_factor)],0)/mlt_factor).tolist()
+                        assert len(quant_list[x]) == bs
+
+            quant_list = [i for i in quant_list if i is not None]
+        return quant_list
 
     def __save_inf_nan(self, golden_epoch=False):
         ## only stores for faulty inferences  injected with bit flips
@@ -579,7 +763,7 @@ class TestErrorModels_ObjDet:
             if self.orig_model_FI_run:
                 output_columns = ['nan_flag_corr_model', 'nan_or_inf_flag_corr_model', 'Nan_or_inf_layers_corr_model', 'Nan_inf_first_occurrence_corr_model']
                 values = [self.nan_flag_image_corr_model, self.nan_inf_flag_image_corr_model, self.nan_inf_overall_layers_image_corr_model, self.nan_inf_first_occurrence_image_corr_model]
-                inf_nan_dataframe = pd.DataFrame(np.array(values, dtype=object).T, columns = output_columns)
+                inf_nan_dataframe = pd.DataFrame(np.array(values).T, columns = output_columns)
                 generic_file_path = os.path.join(self.outputdir, self.dataset_name, 'corr_model', 'epochs', str(self.curr_epoch), "inf_nan")
 
                 print('storing corr models nan and inf info into {}'.format(generic_file_path + '.csv'))
@@ -650,6 +834,15 @@ class TestErrorModels_ObjDet:
             json.dump(quant_dict, outfile)
         print('saved quantiles under', file_name)
 
+    def __save_ftraces(self):
+        # Save quantile info
+        quant_dict = {'corr': [n.tolist() for n in self.ftrace_list_corr], 'resil': [n.tolist() for n in self.ftrace_list_resil], 'resil_corr': [n.tolist() for n in self.ftrace_list_resil_corr]}
+        file_name = os.path.join(self.outputdir, self.dataset_name, self.func + '_' + str(self.num_faults) + '_' + str(self.num_runs) + '_' + str(self.dl_attr.dl_batch_size) + 'bs' + '_ftraces.json')
+        
+        with open(file_name, 'w') as outfile:
+            json.dump(quant_dict, outfile)
+        print('saved ftraces under', file_name)
+
     def __runset_attr_adjust(self, attr):
         dataset_size = self.reference_wrapper.dataset_size
         batch_size   = self.reference_wrapper.batch_size
@@ -692,6 +885,7 @@ class TestErrorModels_ObjDet:
             """
             bitflip_attr updates the flip direction and bit flip position if bit flip type is either using bound range or weighted method
             also add ranger detector information.
+            ## TODO: works for neurons; need to check if this works for weights
             fault_bin column = [[original fault location 7 elements], bit-flip direction (monitor), orig value, corr value, total ranger_detections - IF APPLIED]
             # --- [original fault location 7 elements] => Meaning for NEURON injection: --- #
                 # 1. batchnumber (used in: conv2d,conv3d)
@@ -735,6 +929,10 @@ class TestErrorModels_ObjDet:
                     {} dont match".format(used_model, bit_flip_monitor, bit_flips_direc)
         
                 ## updating the bit information which was actually flipped and not the copy of runset bits
+                if self.corr_img:
+                    bit_flip_monitor = -1*np.ones(len(bit_flip_monitor)) #convert it to -1 for saving to fault-file
+                    bit_flips_direc = -1*np.ones(len(bit_flips_direc))
+
                 if self.reference_parser.rnd_mode == 'neurons':
                     runset[-1] = bit_flip_monitor
                     runset = np.vstack([runset, bit_flips_direc])
@@ -772,9 +970,10 @@ class TestErrorModels_ObjDet:
                 f.flush()
                 f.close()
                 
-                print('{}: saving fault file with bit flip direction info with {} fault runset length and total {} bit flips into {}'.format(used_model, len(runset[0,:]), len(bit_flips_direc), f.name))
 
-        if (not self.copy_yml_scenario and not self.disable_FI) or self.create_new_folder:
+                print('{}: saving fault file with bit flip direction info with {} fault runset length and total {} bit flips'.format(used_model, len(runset[0,:]), np.prod(np.shape(bit_flips_direc))))
+
+        if not self.copy_yml_scenario and not self.disable_FI:
             fault_bin = os.path.join(self.outputdir, self.dataset_name, self.func + '_' +
                 str(self.num_faults) + '_' + str(self.num_runs) + '_' + str(self.dl_attr.dl_batch_size) + 'bs' + '_' + self.dl_attr.dl_dataset_name + '_fault_locs.bin')
             self.model_scenario['fi_logfile'] = os.path.basename(fault_bin)
@@ -806,6 +1005,9 @@ class TestErrorModels_ObjDet:
             pass
         if self.quant_extr:
             self.__save_quantiles()
+        if self.ftrace_extr:
+            self.__save_ftraces()
+
 
     def inject_faults(self):
         if self.orig_model_run:
@@ -848,10 +1050,6 @@ class TestErrorModels_ObjDet:
     def set_FI_attributes(self):
         if not self.disable_FI:
             self.scenario_is_modified = True
-            if self.num_faults:
-                self.model_scenario["max_faults_per_image"] = self.num_faults
-            else:
-                self.num_faults = self.reference_wrapper.parser.max_faults_per_image
             if not self.copy_yml_scenario:
                 if self.num_runs:
                     self.model_scenario["num_runs"] = self.num_runs
@@ -864,9 +1062,13 @@ class TestErrorModels_ObjDet:
                     ## TODO: while resuming copy the bit flip direction and fault locations from fault files of corrupt and ranger fault files.
                     self.outputdir = self.resume_dir
                 else:
+                    # self.outputdir = os.path.join(self._outputdir, 'test')
                     self.outputdir  = os.path.join(self._outputdir, '{}_{}_trials'.format(
-                        self.model_name, self.num_runs), '{}_injs'.format(self.reference_parser.rnd_mode), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, self.bit_range))
-
+                        self.model_name, self.num_runs), '{}_injs'.format(self.inj_value_type), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, int(''.join(i for i in self.bit_range if i.isdigit())) ))
+            if self.num_faults:
+                self.model_scenario["max_faults_per_image"] = self.num_faults
+            else:
+                self.num_faults = self.reference_wrapper.parser.max_faults_per_image
 
             if self.fault_file and self.copy_yml_scenario:
                 assert up(self.fault_file) == up(self.model_scenario_file), "Fault file and scenario file don't belong to same experiment folder"
@@ -884,6 +1086,22 @@ class TestErrorModels_ObjDet:
                     self.resil_wrapper.runset_updated = self.reference_wrapper.runset_updated
                 ## load updated scenario; to be used to store model scenario as dictionary in the form json or yml 
                 self.model_scenario = self.reference_wrapper.get_scenario()
+
+            if self.copy_yml_scenario and not(self.create_new_folder):
+                outputdir = up(up(up(list(Path(os.path.dirname(self.fault_file)).glob('**/*.yml'))[0])))
+                self.num_runs = self.reference_wrapper.parser.num_runs
+                self.bit_range = str(self.reference_parser.rnd_bit_range) if self.reference_parser.rnd_bit_range else '[0_{}]'.format(self.reference_parser.rnd_value_bits)
+                self.bit_range = self.bit_range.replace(" ", "")
+                if self.resume_inj:
+                    ## not fully developed ## under development
+                    ## TODO: while resuming copy the bit flip direction and fault locations from fault files of corrupt and ranger fault files.
+                    self.outputdir = self.resume_dir
+                else:
+                    self.outputdir  = outputdir
+            else:
+                # self.outputdir = os.path.join(self._outputdir, 'test')
+                self.outputdir  = os.path.join(self._outputdir, '{}_{}_trials'.format(
+                        self.model_name, self.num_runs), '{}_injs'.format(self.inj_value_type), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, int(''.join(i for i in self.bit_range if i.isdigit()))))
 
             self.resume_epoch = 0
             self.resume_pointer = 0
@@ -908,27 +1126,13 @@ class TestErrorModels_ObjDet:
                 self.orig_models_fault_iter = self.model_wrapper.get_fimodel_iter(resume_pointer=self.resume_pointer)
             if self.resil_model_FI_run:
                 self.resil_models_fault_iter = self.resil_wrapper.get_fimodel_iter(resume_pointer=self.resume_pointer)
-            self.num_runs = self.reference_wrapper.parser.num_runs
-            self.bit_range = str(self.reference_parser.rnd_bit_range) if self.reference_parser.rnd_bit_range else '[0_{}]'.format(self.reference_parser.rnd_value_bits)
-            self.bit_range = self.bit_range.replace(" ", "")
-            self.dataset_name = self.dl_attr.dl_dataset_name
-            self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
-            self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.reference_parser.rnd_mode)
-            if self.copy_yml_scenario and not(self.create_new_folder):
-                outputdir = up(up(up(list(Path(os.path.dirname(self.fault_file)).glob('**/*.yml'))[0])))
-                if self.resume_inj:
-                    ## not fully developed ## under development
-                    ## TODO: while resuming copy the bit flip direction and fault locations from fault files of corrupt and ranger fault files.
-                    self.outputdir = self.resume_dir
-                else:
-                    self.outputdir  = outputdir
-            else:
-                self.outputdir  = os.path.join(self._outputdir, '{}_{}_trials'.format(
-                        self.model_name, self.num_runs), '{}_injs'.format(self.inj_value_type), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, self.bit_range))
-        else:
-            self.dataset_name = self.dl_attr.dl_dataset_name
-            self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
-            self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.inj_value_type)
+        
+        self.dataset_name = self.dl_attr.dl_dataset_name
+        # #add flag here to scenario file
+
+        if not self.disable_FI:
+            self.model_scenario["exp_type"] = str(self.exp_type) + "_" + str(self.corr_magn)
+
     def __copy_dl_attr(self):
         """
         copies dl_attr class attr to the scenario dictionary.
@@ -946,7 +1150,7 @@ class TestErrorModels_ObjDet:
                     dl_value = getattr(self.dl_attr, dl_key)
                     self.copied_scenario_data[dl_key] = dl_value
 
-    def test_rand_ObjDet_SBFs_inj(self):
+    def test_rand_ObjDet_SBFs_inj(self, **kwargs):
         """
         Injected random single bit flips onto object detection DNNs
         loads the faults and injects into the models
@@ -955,6 +1159,8 @@ class TestErrorModels_ObjDet:
         after each batch of inference model's evalutors process(inputs, outputs) will be called
         to store epoch's interim results in json file.
         """
+
+
         self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
         self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.inj_value_type)
         self.__copy_dl_attr()
@@ -963,6 +1169,7 @@ class TestErrorModels_ObjDet:
         self.__ptfi_evaluator()
         self.golden_epoch = True
         self.__save_model_scenario()
+        self.flt_counter = 0
         self.bit_range = self.bit_range if self.bit_range else 0
         for _epoch in tqdm(range(self.resume_epoch, self.num_runs), desc="injecting {} faults with {} inj policy - {} runs, {} faults & {} bit_range".format(self.inj_value_type, \
                 self.reference_parser.inj_policy if not self.disable_FI else 'no injection', \
@@ -970,6 +1177,7 @@ class TestErrorModels_ObjDet:
                         self.bit_range if not self.disable_FI else '')):
             self.curr_epoch = _epoch
             self.dataloader.datagen_reset()
+            # self.mod_img = None #reset corrupted image
             if not self.disable_FI:
                 self.set_ptfi_batch_pointer()
             if self.orig_model_run:
@@ -994,25 +1202,31 @@ class TestErrorModels_ObjDet:
                             while self.dataloader.data_incoming:
                                 if self.reference_parser.rnd_mode == 'neurons':
                                     self.inject_faults()
+                                    self.flt_counter += self.dl_attr.dl_batch_size
                                 self.dataloader.datagen_itr()
                                 self.__run_inference()
                                 self.set_ptfi_batch_pointer()
+                                self.mod_img = None
                             self.dataloader.datagen_reset()
                     elif self.reference_parser.inj_policy == "per_epoch":  #here eval todo
                         self.inject_faults()
+                        self.flt_counter += self.dl_attr.dl_sampleN
                         while self.dataloader.data_incoming:
                             self.dataloader.datagen_itr()
                             self.__run_inference()
                             self.set_ptfi_batch_pointer()
+                            self.mod_img = None
                             # print('in while loop; dataloader: {}'.format(self.dataloader.datagen_iter_cnt))
                         self.dataloader.datagen_reset()
                     elif self.reference_parser.inj_policy == 'per_batch':
                         while self.dataloader.data_incoming:
                             # if self.reference_parser.rnd_mode == 'neurons':
                             self.inject_faults()
+                            self.flt_counter += self.dl_attr.dl_batch_size
                             self.dataloader.datagen_itr()
                             self.__run_inference()
                             self.set_ptfi_batch_pointer()
+                            self.mod_img = None
                         self.dataloader.datagen_reset()
                     else:
                         print("Parameter inj_policy invalid, should be 'per_image', 'per_batch', or 'per_epoch'")
@@ -1028,9 +1242,10 @@ class TestErrorModels_ObjDet:
                     self.RESIL_MODEL_eval.evaluate(epoch=self.curr_epoch)
                 ## free cuda meomory by removing models no londer used
                 self.save_monitored_features(golden_epoch=True)
-                self.ORIG_MODEL = None
+                if not self.corr_img: 
+                    self.ORIG_MODEL = None
+                    self.RESIL_MODEL = None
                 self.ORIG_MODEL_eval = None
-                self.RESIL_MODEL = None
                 self.RESIL_MODEL_eval = None
                 self.golden_epoch = False
             if self.orig_model_FI_run:
@@ -1040,6 +1255,98 @@ class TestErrorModels_ObjDet:
                 self.logger.info("\n\nEvaluating RESIL_CORR_MODEL_eval\n\n")
                 self.RESIL_CORR_MODEL_eval.evaluate(epoch=self.curr_epoch)
             self.save_monitored_features()
+
         ## store bit flip from 0 to 1 and 1 to 0 info
-        ## TODO activate this feature
         self.__save_fault_file()
+
+
+
+def get_tp_fp_fn_list(output_orig, img_full_data):
+    # Convert output_orig to dict list
+    boxes = output_orig[0]['instances'].pred_boxes.tensor.cpu().tolist()
+    boxes = np.array(boxes)
+    if len(boxes) > 0:
+        boxes[:,2] = boxes[:,2] - boxes[:, 0] #convert xyxy to xywh to compare to gt. TODO: only for coco?
+        boxes[:,3] = boxes[:,3] - boxes[:, 1]
+    boxes = boxes.tolist()
+
+    classes = output_orig[0]['instances'].pred_classes.tolist()
+    scores = output_orig[0]['instances'].scores.tolist()
+    output_anno = []
+    for u in range(len(classes)):
+        output_anno.append({'bbox': boxes[u], 'category_id': classes[u], 'image_id': 0, 'score': scores[u]})
+
+
+    # Ground truth
+    gt = img_full_data['annotations']
+    # imgsize= (img_data[0]["height"], img_data[0]["width"])
+    # Change bbox format from xywh to xyxy
+    # if dataset_name == 'coco2017' or dataset_name == 'coco2014':
+    #     from alficore.dataloader.objdet_baseClasses.boxes import BoxMode
+        # boxes = np.array([i["bbox"] for i in gt]) #xywh
+        # for i in range(len(gt)):
+        #     gt[i]["bbox"] = BoxMode.convert(boxes[i].tolist(), BoxMode.XYWH_ABS, BoxMode.XYXY_ABS)
+
+    for v in range(len(gt)):
+        gt[v]['image_id'] = 0
+
+    # # Make annos of form instance
+    # gt2 = annos2instance(gt, imgsize=imgsize) #transform to instances
+    # gt_boxes = np.array([n['bbox'] for n in gt])
+    # gt_classes = [n['category_id'] for n in gt]
+
+    from alficore.evaluation.ivmod_metric import ivmod_metric
+    tpfpfn = ivmod_metric(gt, output_anno, 0.5, eval_mode="iou+class_labels")
+    output_orig_tp = [{'instances': create_instance(annotations=tpfpfn['tp'])}]
+    output_orig_fp = [{'instances': create_instance(annotations=tpfpfn['fp'])}]
+    output_orig_fn = [{'instances': create_instance(annotations=tpfpfn['fn'])}]
+
+    orig_label = "TP: " + str(len(tpfpfn['tp'])) + ", " + "FP: " + str(len(tpfpfn['fp'])) + ", " + "FN: " + str(len(tpfpfn['fn']))
+
+    return output_orig_tp, output_orig_fp, output_orig_fn, orig_label
+
+
+def create_instance(img_size=416, annotations=None):
+    """
+    pred_boxes should be passed in raw XYWH format and internally this function converts them back to native
+    format preferred by pytorchfiWrapper functions viz XYXY  format.
+    """
+    from alficore.dataloader.objdet_baseClasses.boxes import BoxMode, Boxes
+    from alficore.dataloader.objdet_baseClasses.instances import Instances
+    pred_boxes_xywh = [annotations[i]['bbox'] for i in range(len(annotations))]
+    pred_boxes_xyxy = [BoxMode.convert(box, BoxMode.XYWH_ABS, BoxMode.XYXY_ABS) for box in pred_boxes_xywh]
+    pred_boxes = [torch.Tensor(pred_boxes) for pred_boxes in pred_boxes_xyxy]
+    try:
+        pred_scores = [annotations[i]['score'] for i in range(len(annotations))]
+    except:
+        pred_scores = [0]*len(pred_boxes)
+    # if "coco" in self.metadata.name.lower() or "robo" in self.metadata.name.lower() or "ppp" in self.metadata.name.lower():
+    #     """
+    #     for CoCo datasets
+    #     """
+    #     try:
+    #         pred_classes = [self.metadata.thing_dataset_id_to_contiguous_id[annotations[i]['category_id']] for i in range(len(annotations))]
+    #     except:
+    #         print("Input has the wrong class labels (0-80) instead of (1-91)?)")
+    #         sys.exit()
+    # else:
+    pred_classes = [annotations[i]['category_id'] for i in range(len(annotations))]
+    
+    if not len(pred_classes):
+        pred_classes = [-1]*len(pred_boxes)
+    if not len(pred_scores):
+        pred_scores = [0]*len(pred_boxes)
+    
+    instance = Instances(image_size=img_size)
+    # instance.set("image_size", img_size)
+    instance.set("pred_boxes", Boxes(torch.stack(pred_boxes, 0)) if len(pred_boxes)>0 else  Boxes([]))
+    instance.set("pred_classes", torch.Tensor(pred_classes).type(torch.ByteTensor))
+    instance.set("scores", torch.Tensor(pred_scores))
+    return instance
+
+def visual_check(output, batch_img, data, output_path, ds_name, model):
+    from alficore.evaluation.visualization.visualization import Visualizer, simple_xx_coverage, simple_visualization, simple_visualization_direct_img
+    output_tp, output_fp, output_fn, label = get_tp_fp_fn_list([output[batch_img]], data[batch_img])
+    # output_path = output_folder + '/test_bbox_' + corr_type + str(std) + '_' + str(n) + '.png'
+    simple_visualization_direct_img(data[batch_img], output_tp[0]["instances"], output_path, ds_name, inset_str=label, extra_boxes=output_fp[0]["instances"], extra_boxes2= output_fn[0]["instances"], classes=model.model.CLASSES)
+    

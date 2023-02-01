@@ -43,7 +43,7 @@ def plot_sdc_due(x_pos, sdc_m, sdc_err, save_name):
     print('Saved as', save_name)
 
 def plot_sdc_due_same_graph(fig, ax, x_pos, sdc_m, sdc_err, cnt, flt_names, lbl):
-    w = 0.5
+    w = 0.55
     ax.bar(np.array(x_pos) - 4*w +0.5*w + cnt*w, sdc_m, width = w, label = lbl)
     ax.errorbar(np.array(x_pos) - 4*w +0.5*w + cnt*w, sdc_m, yerr=sdc_err, fmt="o", capsize=3, color='k', markersize='1', label=None) #color='k', fmt="o", markersize='3'
     ax.set_xticks(ticks=x_pos, labels=flt_names, rotation=90)
@@ -84,9 +84,9 @@ df = ['yolo_coco', 'yolo_kitti', 'ssd_coco', 'ssd_kitti', 'retina_coco', 'retina
 pth = '/home/fgeissle/fgeissle_ranger/object_detection/quantile_detection_data/'
 
 
-fig_sdc = plt.figure()
+fig_sdc = plt.figure(figsize=(8,4))
 ax_sdc = fig_sdc.gca()
-fig_due = plt.figure()
+fig_due = plt.figure(figsize=(8,4))
 ax_due = fig_due.gca()
 
 cnt = 0
@@ -175,7 +175,7 @@ for exp in df:
 
 save_name = pth + "sdc_rates_all.png"
 # fig_sdc.legend(bbox_to_anchor=(0.8, 1.05), loc='upper right', ncol=3, fontsize=9)
-fig_sdc.legend(bbox_to_anchor=(1.25, 0.7), loc='upper right', ncol=1, fontsize=12)
+fig_sdc.legend(bbox_to_anchor=(1.2, 0.7), loc='upper right', ncol=1, fontsize=12)
 ax_sdc.set_ylabel('SDC rates (%)', fontsize=14)
 # ax_sdc.set_xlim([-0.5, np.max(x_pos)+2.5]) #adjusted
 fig_sdc.savefig(save_name, bbox_inches = 'tight',  pad_inches = 0.1, dpi=150, format='png')
@@ -183,7 +183,7 @@ print('Saved as', save_name)
 
 save_name = pth + "due_rates_all.png"
 # fig_due.legend(bbox_to_anchor=(0.8, 1.05), loc='upper right', ncol=3, fontsize=9)
-fig_due.legend(bbox_to_anchor=(1.25, 0.7), loc='upper right', ncol=1, fontsize=12)
+fig_due.legend(bbox_to_anchor=(1.2, 0.7), loc='upper right', ncol=1, fontsize=12)
 ax_due.set_ylabel('DUE rates (%)', fontsize=14)
 fig_due.savefig(save_name, bbox_inches = 'tight',  pad_inches = 0.1, dpi=150, format='png')
 print('Saved as', save_name)

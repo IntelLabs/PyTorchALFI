@@ -161,7 +161,47 @@ def print_model_info2(ind, nr_features, nr_used_layers, nr_used_layers_mean, cap
     #     res = [key for key, val in freqs.items() if val > 1]
     #     combos = [set(x) for x in res]
     #     print('Unique feature combos:', combos)
-        
+
+def get_p_r_tnr(tp, fp, fn, tn):
+    if tp+fp>0:
+        p = tp/(tp+fp)
+    else:
+        p = None
+    if tp+fn>0:
+        r = tp/(tp+fn)
+    else:
+        r = None
+    if tn+fp>0:
+        tnr = tn/(tn+fp)
+    else:
+        tnr = None
+    # tpr = recall
+    return p,r, tnr
+
+def get_tpfpfntn(mpg, conf_matrix):
+    pr_list_fmodes = []
+    for n in range(max(mpg)+1):
+        if n == 0:
+            continue #this is only non-sdc -> no pr wanted
+        ind = np.where(np.array(mpg) == n)
+        row = conf_matrix[ind,:]
+        col = conf_matrix[:, ind]
+        diag = conf_matrix[np.min(ind):np.max(ind)+1, np.min(ind):np.max(ind)+1]
+        tp = diag.sum()
+        fp = col.sum() - tp
+        fn = row.sum() - tp
+        tn = conf_matrix.sum() - tp - fp - fn
+
+        p,r, tnr = get_p_r_tnr(tp, fp, fn, tn)
+        pr_list_fmodes.append([p,r, tnr])
+
+    pr_list_fmodes = [n for n in pr_list_fmodes if n[0] is not None]
+
+    p_m = np.mean([x[0] for x in pr_list_fmodes])
+    r_m = np.mean([x[1] for x in pr_list_fmodes])
+    tnr_m = np.mean([x[2] for x in pr_list_fmodes])
+    # print('p modes, r modes, tnr modes', pr_list_fmodes)
+    return p_m, r_m, tnr_m
 
 def print_model_info3(ind, model_data):
     # P, R, Acc
@@ -186,12 +226,12 @@ def print_model_info3(ind, model_data):
     mcl_rate = (avg_conf_mat.sum()-np.sum(np.diag(avg_conf_mat)))/(avg_conf_mat.sum())
     print('misclassification rate:', mcl_rate)
 
-    # cls_mapping, cats_mapping, sdc_mapping = get_flt_dicts()
-    # cls_mapping = list(cls_mapping.values())
-    # cats_mapping = list(cats_mapping.values())
-    # sdc_mapping = list(sdc_mapping.values())
-    # get_tpfpfn_new(cls_mapping, avg_conf_mat)
-
+    cls_mapping, cats_mapping, sdc_mapping = get_flt_dicts()
+    cls_mapping = list(cls_mapping.values())
+    cats_mapping = list(cats_mapping.values())
+    sdc_mapping = list(sdc_mapping.values())
+    p_m, r_m, tnr_m = get_tpfpfntn(cls_mapping, avg_conf_mat)
+    print('p_m', round(p_m*100, 1), 'r_m', round(r_m*100,1), 'tnr_m', round(tnr_m*100,1))
 
     # layers
     cap = [[] for n in range(len(model_data['ft'][0]))]

@@ -26,6 +26,8 @@ def plot_hist(mns, errs, mns_ref, max_mon_range, target, pth):
     q_names = ['q0', 'q10', 'q20', 'q30', 'q40', 'q50', 'q60', 'q70', 'q80', 'q90', 'q100']
     for lay in range(max_mon_range): 
         x_pos = list(range(len(mns[lay])))
+        axs[lay].hlines(y=0.5, xmin=x_pos[0]-1, xmax=x_pos[-1]+1, linewidth=1, color='k', linestyles='--', label=None)
+
         if lay == 0:
             lbl = 'SDC'
         else:
@@ -49,6 +51,7 @@ def plot_hist(mns, errs, mns_ref, max_mon_range, target, pth):
         else:
             axs[lay].set_ylabel("Fault+" +str(lay))
         axs[lay].set_ylim([0,1])
+        axs[lay].set_xlim([x_pos[0]-0.5, x_pos[-1]+0.5])
         # # Put text
         # for n in range(len(mns[lay])):
         #     x = x_pos
@@ -104,7 +107,7 @@ def get_mns_errs(data_x, no_layers_shown = None):
 
 def main():
     ##############################################################################
-    folder_path = ['/home/fgeissle/fgeissle_ranger/object_detection/quantile_detection_data/']
+    folder_path = ['/home/fgeissle/pytorchalfi/object_detection/quantile_detection_data/']
     file_list = find_file_by_name(folder_path, 'quantile_shift_stats')[0]
     
     no_layers_shown = 3 #None #None means we extract from data, otherwise give explicitly

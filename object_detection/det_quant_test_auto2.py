@@ -311,11 +311,11 @@ def main(argv):
 
         batch_size = 20 #batchsize for neurons
         num_faults = 1 #faults
-        num_runs = 100 #number of runs #500
+        num_runs = 1 #number of runs #500
         sample_size = 100 #nr of images (sequential)
         dataset_type = 'val' #'train', 'val'
 
-        save_to_nw = True #Save directly to nw store?
+        save_to_nw = False #Save directly to nw store?
 
         quant_monitoring = False
         ftrace_monitoring = True

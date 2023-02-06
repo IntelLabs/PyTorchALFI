@@ -106,7 +106,7 @@ dependencies:
   - multidict=5.1.0=py39h3811e60_1
   - nbclient=0.5.3=pyhd8ed1ab_0
   - nbconvert=6.0.7=py39hf3d152e_3
-  - nbformat=5.1.2=pyhd8ed1ab_1
+  - nbformat=5.7.3=pyhd8ed1ab_0
   - ncurses=6.2=he6710b0_1
   - nest-asyncio=1.4.3=pyhd8ed1ab_0
   - nettle=3.6=he412f7d_0

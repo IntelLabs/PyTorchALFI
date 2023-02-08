@@ -115,9 +115,7 @@ for xx in range(len(data_list)):
 ax.set_xticks(ticks=np.array(range(len(data_list)))*stretch, labels=data_list, rotation=90, fontsize=14)
 ax.set_ylabel('Inference time per image (ms)', fontsize=14)
 save_name = pth + "timings"+ ".png"
-# fig_imp.legend()
-# fig.legend()
-# fig.legend(bbox_to_anchor=(0.8, 1.1), loc='upper right', ncol=2) #, fontsize=9)
-fig.legend(bbox_to_anchor=(1.3, 0.7), loc='upper right', ncol=1, fontsize=12)
+ax.set_ylim(np.array(ax.get_ylim()) + [0,5])
+fig.legend(bbox_to_anchor=(1.2, 0.7), loc='upper right', ncol=1, fontsize=12)
 fig.savefig(save_name, bbox_inches = 'tight',  pad_inches = 0.1, dpi=250, format='png')
 print('saved as', save_name)

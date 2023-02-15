@@ -317,8 +317,8 @@ def main(argv):
 
         save_to_nw = False #Save directly to nw store?
 
-        quant_monitoring = False
-        ftrace_monitoring = True
+        quant_monitoring = True
+        ftrace_monitoring = False
 
         # TODO: Issues with retina_net:
         # - run with smaller bs (10), but >1 in general ok

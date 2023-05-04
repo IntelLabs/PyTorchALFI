@@ -1,8 +1,8 @@
-# Pytorch application-level fault injector (pytorch-Alfi)
+# Pytorch application-level fault injector (PyTorchALFI)
 
 ## Overview
 
-We present pytorch-ALFI, a tool to run hardware fault injection campaigns in pytorch in an automated and convenient way. We integrate the opensource pytorchfi fault injector component (see [References [1]](#references) or [here](https://github.com/pytorchfi/pytorchfi)) and add additional functionality for fine-granular and targeted fault scenario configuration, dataloader wrapping, test evaluation, visualization, and monitoring. Currently, we support the two use cases of **image classification** and **object detection**.
+We present PyTorchALFI, a tool to run hardware fault injection campaigns in pytorch in an automated and convenient way. We integrate the opensource pytorchfi fault injector component (see [References [1]](#references) or [here](https://github.com/pytorchfi/pytorchfi)) and add additional functionality for fine-granular and targeted fault scenario configuration, dataloader wrapping, test evaluation, visualization, and monitoring. Currently, we support the two use cases of **image classification** and **object detection**.
 The [Fig. 1](#Schematic) gives an overview of the structure of pytorch-ALFI.
 
 <p align="center">
@@ -19,14 +19,14 @@ The core of the tool is the **alficore** component, which provides a test class 
 First create a conda environment using the environment (condaenv.yml file) to install the list of required libraries. 
 
 ```
-conda create -n pytorchALFI python=3.9
+conda create -n PyTorchALFI python=3.9
 ```
-This will create a conda environment (pytorchALFI)
+This will create a conda environment (PyTorchALFI)
 
 Activate the environment using
 
 ```
-conda activate pytorchALFI
+conda activate PyTorchALFI
 ```
 Then install the python libraries required by our code using the following command
 
@@ -215,7 +215,7 @@ The following test result files are generated:
 
 ### End-to-end integration example
 
-The files `demo_img_classification.py` and `demo_obj_detection.py` give an example of how to integrate pytorchalfi into a test scenario. The following things need to be prepared in advance:
+The files `demo_img_classification.py` and `demo_obj_detection.py` give an example of how to integrate PyTorchALFI into a test scenario. The following things need to be prepared in advance:
 - a scenario configuration (see section [Scenario configuration](#scenario-configuration))
 - a model where faults should be injected
 - a specially prepared dataloader (see section [Dataloaders](#dataloaders))

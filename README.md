@@ -1,7 +1,7 @@
-# Activation monitoring with pytorchalfi (experimental)
+# Activation monitoring with PyTorchALFI (experimental)
 
 *NOTE* This is an experimental branch using quantile hooks to monitor activations in deep neural networks.
-Please refer to the main branch for a more mature version of pytorchalfi.
+Please refer to the main branch for a more mature version of PyTorchALFI.
 
 Prerequisite:
 Please install the mmdetection framework from https://github.com/open-mmlab/mmdetection in a separate location and change paths wherever needed to your location of mmdetection.

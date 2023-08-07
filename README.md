@@ -312,8 +312,8 @@ Most parameters were previously set through the command line. The parameters sta
 # References:
    **[1]** A. Mahmoud et al., “PyTorchFI: A Runtime Perturbation Tool for DNNs,” in 2020 50th Annual IEEE/IFIP International Conference on Dependable Systems and Networks Workshops (DSN-W), 2020, pp. 25–31.  
    **[2]** Qutub, Syed, et al. "Hardware faults that matter: Understanding and Estimating the safety impact of hardware faults on object detection DNNs." International Conference on Computer Safety, Reliability, and Security. Springer, Cham, 2022.
-    https://arxiv.org/abs/2209.03225.
-    **[3]** Ralf Gräfe, Qutub Syed Sha, Florian Geissler and Michael Paulitsch. Large-Scale Application of Fault Injection into PyTorch Models - an Extension to PyTorchFI for Validation Efficiency. 2023 53rd Annual IEEE/IFIP International Conference on Dependable Systems and Networks - Supplemental Volume (DSN-S). June, 2023.
+    https://arxiv.org/abs/2209.03225.  
+   **[3]** Ralf Gräfe, Qutub Syed Sha, Florian Geissler and Michael Paulitsch. Large-Scale Application of Fault Injection into PyTorch Models - an Extension to PyTorchFI for Validation Efficiency. 2023 53rd Annual IEEE/IFIP International Conference on Dependable Systems and Networks - Supplemental Volume (DSN-S). June, 2023.
 # Authors
 
 Ralf Graefe: Ralf.Graefe@intel.com

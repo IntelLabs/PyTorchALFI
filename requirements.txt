@@ -50,7 +50,7 @@
     patsy==0.5.1
     pep517==0.10.0
     pillow==9.3.0
-    pipreqs==0.4.10
+    pipreqs==0.4.12
     plotly==4.14.3
     pluggy==0.13.1
     portalocker==2.5.1

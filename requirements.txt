@@ -23,7 +23,7 @@
     flownet2-private-package-ralf-graefe==0.0.1
     google-auth==2.9.1
     google-auth-oauthlib==0.4.4
-    grpcio==1.36.1
+    grpcio==1.53.0
     hydra-slayer==0.2.0
     imagesize==1.2.0
     iniconfig==1.1.1

@@ -309,11 +309,18 @@ frcnn_Errormodel = TestErrorModels_ObjDet(model=wrapped_model, resil_model=None,
 ```
 Most parameters were previously set through the command line. The parameters starting with "resil" and "ranger" can be ignored in this opensource version and should be set to None. Please contact the authors if you would like to learn more about this functionality. If the parameter `disable_FI` if set to true it will prevent any faults from being injected and no faulty model will be created. This can be used e.g. if you would like to make use of our evaluation functions for an uncorrupted model.
 
+
+
+
 # References:
-   **[1]** A. Mahmoud et al., “PyTorchFI: A Runtime Perturbation Tool for DNNs,” in 2020 50th Annual IEEE/IFIP International Conference on Dependable Systems and Networks Workshops (DSN-W), 2020, pp. 25–31.  
-   **[2]** Qutub, Syed, et al. "Hardware faults that matter: Understanding and Estimating the safety impact of hardware faults on object detection DNNs." International Conference on Computer Safety, Reliability, and Security. Springer, Cham, 2022.
-    https://arxiv.org/abs/2209.03225.  
-   **[3]** Ralf Gräfe, Qutub Syed Sha, Florian Geissler and Michael Paulitsch. Large-Scale Application of Fault Injection into PyTorch Models - an Extension to PyTorchFI for Validation Efficiency. 2023 53rd Annual IEEE/IFIP International Conference on Dependable Systems and Networks - Supplemental Volume (DSN-S). June, 2023.
+**[1]** R. Gräfe, Q. S. Sha, F. Geissler and M. Paulitsch, "Large-Scale Application of Fault Injection into PyTorch Models -an Extension to PyTorchFI for Validation Efficiency," 2023 53rd Annual IEEE/IFIP International Conference on Dependable Systems and Networks - Supplemental Volume (DSN-S), Porto, Portugal, 2023, pp. 56-62, doi: 10.1109/DSN-S58398.2023.00025.
+
+Please remember to cite our repository if you find it valuable and utilize our work in your research or projects. Citing our repository helps acknowledge the source and contributes to the open-source community. Thank you for your support!
+
+**[2]** A. Mahmoud et al., “PyTorchFI: A Runtime Perturbation Tool for DNNs,” in 2020 50th Annual IEEE/IFIP International Conference on Dependable Systems and Networks Workshops (DSN-W), 2020, pp. 25–31.  
+**[3]** Qutub, Syed, et al. "Hardware faults that matter: Understanding and Estimating the safety impact of hardware faults on object detection DNNs." International Conference on Computer Safety, Reliability, and Security. Springer, Cham, 2022.
+https://arxiv.org/abs/2209.03225.  
+**[4]** Ralf Gräfe, Qutub Syed Sha, Florian Geissler and Michael Paulitsch. Large-Scale Application of Fault Injection into PyTorch Models - an Extension to PyTorchFI for Validation Efficiency. 2023 53rd Annual IEEE/IFIP International Conference on Dependable Systems and Networks - Supplemental Volume (DSN-S). June, 2023.
 # Authors
 
 Ralf Graefe: Ralf.Graefe@intel.com

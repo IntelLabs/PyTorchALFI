@@ -50,6 +50,8 @@ class fault_injection:
         self.LAYER_TYPE_CONV2D = False
         self.LAYER_TYPE_FCC = False
         self.LAYER_TYPE_CONV3D = False
+        self.LAYER_TYPE_LeakyRelu = False
+        self.LAYER_TYPE_BatchNorm = False
         self.LAYER_TYPES = kwargs.get("layer_types",("conv2d"))
         if "conv2d" in self.LAYER_TYPES:
             self.LAYER_TYPE_CONV2D = True
@@ -57,6 +59,10 @@ class fault_injection:
             self.LAYER_TYPE_CONV3D = True
         if "fcc" in self.LAYER_TYPES:
             self.LAYER_TYPE_FCC = True
+        if "leakyRelu" in self.LAYER_TYPES:
+            self.LAYER_TYPE_LeakyRelu = True
+        if "batchnorm" in self.LAYER_TYPES:
+            self.LAYER_TYPE_BatchNorm = True
 
         self.use_cuda = kwargs.get("use_cuda", next(model.parameters()).is_cuda)
         model_dtype = next(model.parameters()).dtype
@@ -121,9 +127,13 @@ class fault_injection:
 
         if isinstance(param, nn.Conv2d) and self.LAYER_TYPE_CONV2D:
             ret = True
-        if isinstance(param, nn.Conv3d) and self.LAYER_TYPE_CONV3D:
+        elif isinstance(param, nn.Conv3d) and self.LAYER_TYPE_CONV3D:
             ret = True
-        if isinstance(param, nn.Linear) and self.LAYER_TYPE_FCC:
+        elif isinstance(param, nn.Linear) and self.LAYER_TYPE_FCC:
+            ret = True
+        elif isinstance(param, nn.modules.activation.LeakyReLU) and self.LAYER_TYPE_LeakyRelu:
+            ret = True
+        elif isinstance(param, nn.modules.batchnorm.BatchNorm2d) and self.LAYER_TYPE_BatchNorm:
             ret = True
         return ret
 
@@ -240,9 +250,10 @@ class fault_injection:
                     else corrupt_idx
                 )
                 #logging.info("injecting into index {}".format(corrupt_idx))
-
+            
                 orig_value = plist[corrupt_layer[i]].data[corrupt_idx].item()
 
+                self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer + i
                 if CUSTOM_INJECTION:
                     #corrupt_value = CUSTOM_FUNCTION(param.data, corrupt_idx)
                     corrupt_value = CUSTOM_FUNCTION(orig_value)
@@ -263,6 +274,7 @@ class fault_injection:
                 corrupt_idx = [corrupt_kH, corrupt_kW]
             curr_layer = 0
 
+            self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer
             modules = self.CORRUPTED_MODEL.modules()
             tmp_param_size = []
             for module in modules:

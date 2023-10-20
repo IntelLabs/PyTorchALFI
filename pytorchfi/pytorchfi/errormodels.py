@@ -646,7 +646,6 @@ class single_bit_flip_func(core.fault_injection):
         # range_max = self.get_conv_max(self.get_curr_conv())
         # logging.info("curr_conv: {}".format(self.get_curr_conv()))
         # logging.info("range_max", range_max)
-        self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer
         prev_value = torch.tensor(orig_value)
         if type(self.bit_loc) == CircularBuffer:
             bit_loc = self.bit_loc.front()

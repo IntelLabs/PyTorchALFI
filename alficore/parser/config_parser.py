@@ -29,6 +29,7 @@ class ConfigParser:
         self.rnd_value_max = -1.0
         self.rnd_value_bits = -1
         self.rnd_bit_range = []
+        self.rnd_bit_range_exclude = []
         self.ds_location = "-1"
         self.ds_batch_size = -1
         self.ds_loader_class = "-1"
@@ -50,7 +51,7 @@ class ConfigParser:
         ## TODO: Activate bitflip_bounds feature
 	    # self.layer_boundsfile = "-1"
         self.rnd_value_type_opts = ["number", "bitflip", "bitflip_bounds", "bitflip_weighted", "stuckat_0", "stuckat_1"]
-        self.layer_types_opts = ["conv2d", "fcc", "conv3d"]
+        self.layer_types_opts = ["conv2d", "fcc", "conv3d", "leakyRelu", "batchnorm"]
         self.inj_policy_opts = ["per_image", "per_epoch", "per_batch"]
         self.reason = []
         self.valid = True
@@ -117,8 +118,7 @@ class ConfigParser:
             self.rnd_mode = "neurons"
         if self.rnd_mode == 'weights':
             if self.inj_policy not in ['per_epoch', 'per_batch']:
-                self.reason.append("Wrong value for inj_policy selected for the fault injections in weights; weight fault injection only supports 'per_epoch' and 'per_batch'\
-                : {}".format(self.sourcedev))
+                self.reason.append("Wrong value for inj_policy selected for the fault injections in weights; weight fault injection only supports 'per_epoch' and 'per_batch'")
                 self.valid = False
         elif self.rnd_mode not in self.rnd_mode_opts:
             self.reason.append(
@@ -217,6 +217,14 @@ class ConfigParser:
                             "rnd_bit_range is too large"
                             ",should not be larger than rnd_value_bits")
                         self.valid = False
+            if self.rnd_bit_range_exclude:
+                if len(self.rnd_bit_range) > 2:
+                    numbers = list(range(self.rnd_bit_range[0], self.rnd_bit_range[1]))
+                    for x in self.rnd_bit_range_exclude:
+                        if not x in numbers:
+                            self.reason.append("rnd_bit_range_exclude contains numbers outside range of rnd_bit_range")
+                            self.valid = False
+
         elif self.rnd_value_type == "stuckat_0" or self.rnd_value_type == "stuckat_1":
             if self.inj_policy != "per_epoch":
                 self.reason.append("Permanent faults: stuck at 0/1 is only compatible with injectin policy-per_epoch; current injection policy: {}".format(self.inj_policy))

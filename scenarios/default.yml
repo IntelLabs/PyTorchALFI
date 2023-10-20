@@ -63,7 +63,7 @@ run_type: single
 # a: rnd_mode (either neurons or weights) the number of faults is calculated based on the number of relevant neurons
 # or weights respectively in the model
 # b: layer_types (either conv2d, conv3d or fcc) relevant neurons or weights are those related to the selected layer type
-num_runs: 1
+num_runs: 2
 # you can only set one of num_faults_per_image or max_fault_rate
 max_faults_per_image: 1
 #max_fault_rate: 0.01
@@ -86,7 +86,7 @@ value_type: random
 # conv2d: 2D convolution layer
 # conv3d: 3D convolution layer
 # fcc: fully connected layer = nn.Linear type in pytorch
-
+# layer_types: [conv2d, fcc, leakyRelu, batchnorm]
 layer_types: [conv2d]
 
 #####################################################################################
@@ -130,8 +130,8 @@ rnd_value: change
 
 # inj_policy_opts = ["per_image", "per_epoch", "per_batch"]
 inj_policy: per_batch
-# inj_policy: per_epoch
-# inj_policy: per_batch
+inj_policy: per_epoch
+# inj_policy: per_image
 
 # For the value itself there are 2 options: {number|bitflip}
 # in the first case a min-max range needs to be given
@@ -149,6 +149,9 @@ rnd_value_bits: 32
 # [from, to], both values are included in the range
 # if only one value us given then exactly this bit is flipped
 rnd_bit_range: [1]
+
+## rnd_bit_range_exclude: optional, excludes a particular bit if rnd_bit_range is a list
+rnd_bit_range_exclude: [1]
 # rnd_bit_range: [0,8]
 
 #####################################################################################

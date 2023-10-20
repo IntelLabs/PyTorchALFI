@@ -169,24 +169,16 @@ class ptfiwrap:
                 for i in range(1, batches):
                     tile_runset = np.tile(runset[:, i*self.max_faults_per_image:i*self.max_faults_per_image+self.max_faults_per_image],(1, self.batch_size))
                     _runset = np.hstack([_runset, tile_runset])
-                _runset = _runset[:,:self.num_runs*self.dataset_size]
+                _runset = _runset[:,:self.num_runs*self.dataset_size*self.max_faults_per_image]
                 return _runset
         elif self.parser.rnd_mode == 'weights':
             if self.parser.inj_policy == 'per_batch':
-                batches = int(np.ceil(self.num_runs*self.dataset_size/self.batch_size))
+                batches = int(np.ceil(self.num_faults*self.dataset_size/self.batch_size))
                 _runset = np.tile(runset[:, 0:self.max_faults_per_image], (1, self.batch_size))
-                curr_dataset_size = self.batch_size
-                batch_size        = self.batch_size
                 for i in range(1, batches):
-                    if curr_dataset_size + batch_size  > self.dataset_size:
-                        batch_size = self.dataset_size - (curr_dataset_size)
-                        batch_size = batch_size if batch_size>0 else self.batch_size
-                        curr_dataset_size = 0
-                    else:
-                        batch_size = self.batch_size
-                        curr_dataset_size = curr_dataset_size + batch_size
-                    tile_runset = np.tile(runset[:, i*self.max_faults_per_image:i*self.max_faults_per_image+self.max_faults_per_image],(1, batch_size))
+                    tile_runset = np.tile(runset[:, i*self.max_faults_per_image:i*self.max_faults_per_image+self.max_faults_per_image],(1, self.batch_size))
                     _runset = np.hstack([_runset, tile_runset])
+                _runset = _runset[:,:self.num_runs*self.dataset_size*self.max_faults_per_image]
                 return _runset
             # if self.parser.inj_policy == "per_epoch":
             elif self.parser.inj_policy == 'per_epoch':
@@ -210,7 +202,8 @@ class ptfiwrap:
                      "location": self.parser.rnd_location, "value": self.parser.rnd_value,
                      "value_type": self.parser.rnd_value_type,
                      "value_bits": self.parser.rnd_value_bits,
-                     "bit_range": self.parser.rnd_bit_range}
+                     "bit_range": self.parser.rnd_bit_range,
+                     "bit_range_exclude": self.parser.rnd_bit_range_exclude}
 
         if self.parser.rnd_mode == "neurons":
             modes["batch"] = self.parser.rnd_batch
@@ -344,6 +337,7 @@ class ptfiwrap:
         max_value = kwargs.get("value_max", -1)
         value_bits = kwargs.get("value_bits", -1)
         bit_range = kwargs.get("bit_range", [])
+        bit_range_exclude = kwargs.get("bit_range_exclude", [])
         fault = {}
         if fix_layer > -1:
             fault["layer"] = fix_layer
@@ -407,7 +401,13 @@ class ptfiwrap:
                 if len(bit_range) == 1:
                     fault["value"] = bit_range[0]
                 elif len(bit_range) == 2:
-                    fault["value"] = random.randint(bit_range[0], bit_range[1])
+                    if len(bit_range_exclude):
+                        numbers = list(range(bit_range[0], bit_range[1]))
+                        for x in bit_range_exclude:
+                            numbers.remove(x)
+                        fault["value"] = random.choice(numbers)
+                    else:
+                        fault["value"] = random.randint(bit_range[0], bit_range[1])
                 else:  # other values make no sense here
                     pass
             elif value_bits > -1:
@@ -499,6 +499,7 @@ class ptfiwrap:
         else:
             kwargs["value_bits"] = modes["value_bits"]
             kwargs["bit_range"] = modes["bit_range"]
+            kwargs["bit_range_exclude"] = modes["bit_range_exclude"]
 
         # layers
 

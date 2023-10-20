@@ -283,10 +283,8 @@ class TestErrorModels_ObjDet:
                 elif self.reference_parser.inj_policy=='per_epoch':
                     if self.reference_parser.rnd_mode == 'neurons':
                         assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                        assert (bit_flip_monitor[0:len(bit_flip_monitor):self.dataloader.dataset_length][:num_runs] == self.reference_wrapper.runset[6,:][:num_runs]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
                     elif self.reference_parser.rnd_mode == 'weights':
-                        # assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][0:self.reference_wrapper.runset_updated.shape[1]:self.dataloader.dataset_length][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
-                        assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:num_runs]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                        assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
 
 
                 assert len(bit_flip_monitor[bit_flip_monitor==None]) == 0, "Epoch- {}: {} Sanity check: bit flips monitored - {} and total number of bit flips captured - \
@@ -686,7 +684,7 @@ class TestErrorModels_ObjDet:
                     num_inferences =  self.num_runs*self.dataloader.dataset_length
                     assert len(ranger_actvns) == num_inferences, "{} Sanity check: Ranger activations captured in {} and total number of number - \
                         {} dont match".format(used_model, len(ranger_actvns), num_inferences)
-                    runset = np.vstack([runset, np.array(ranger_actvns)])
+                    runset = np.vstack([runset, np.tile(ranger_actvns, (1, self.num_faults))])
                 return runset
 
             """
@@ -828,22 +826,23 @@ class TestErrorModels_ObjDet:
     def set_ptfi_batch_pointer(self):
         if self.reference_parser.rnd_mode == "neurons":
             if self.reference_parser.inj_policy == "per_image" or self.reference_parser.inj_policy == 'per_batch':
-                ptfi_batch_pointer = self.curr_epoch*self.dataloader.dataset_length*self.num_faults + self.dataloader.datagen_iter_cnt
+                ptfi_batch_pointer = self.curr_epoch*self.dataloader.dataset_length*self.num_faults + self.dataloader.datagen_iter_cnt*self.num_faults
             elif self.reference_parser.inj_policy == "per_epoch":
-                ptfi_batch_pointer = self.curr_epoch*self.dataloader.dataset_length*self.num_faults + self.dataloader.datagen_iter_cnt
+                ptfi_batch_pointer = self.curr_epoch*self.dataloader.dataset_length*self.num_faults + self.dataloader.datagen_iter_cnt*self.num_faults
             if self.orig_model_FI_run:
                 self.model_wrapper.pytorchfi.ptfi_batch_pointer = ptfi_batch_pointer
             if self.resil_model_FI_run:
                 self.resil_wrapper.pytorchfi.ptfi_batch_pointer = ptfi_batch_pointer
         if self.reference_parser.rnd_mode == "weights":
             if self.reference_parser.inj_policy == "per_epoch":
-                ptfi_batch_pointer = self.curr_epoch
-            if self.reference_parser.inj_policy == 'per_batch':
-                ptfi_batch_pointer = int(np.ceil(self.curr_epoch*self.dataloader.dataset_length*(1/self.dl_attr.dl_batch_size))) + int(np.ceil(self.dataloader.datagen_iter_cnt/(self.dl_attr.dl_batch_size or 1)))
+                ptfi_batch_pointer = self.curr_epoch*self.num_faults
+            elif self.reference_parser.inj_policy == 'per_batch':
+                ptfi_batch_pointer = int(np.ceil(self.curr_epoch*self.dataloader.dataset_length*self.num_faults*(1/self.dl_attr.dl_batch_size))) + int(np.ceil(self.dataloader.datagen_iter_cnt*self.num_faults/(self.dl_attr.dl_batch_size or 1)))
             if self.orig_model_FI_run:
                 self.model_wrapper.pytorchfi.ptfi_batch_pointer = ptfi_batch_pointer
             if self.resil_model_FI_run:
                 self.resil_wrapper.pytorchfi.ptfi_batch_pointer = ptfi_batch_pointer
+        return None
 
     def set_FI_attributes(self):
         if not self.disable_FI:
@@ -991,13 +990,13 @@ class TestErrorModels_ObjDet:
                     self.dataloader.datagen_reset()
                 else:
                     if self.reference_parser.inj_policy == "per_image":
-                            while self.dataloader.data_incoming:
-                                if self.reference_parser.rnd_mode == 'neurons':
-                                    self.inject_faults()
-                                self.dataloader.datagen_itr()
-                                self.__run_inference()
-                                self.set_ptfi_batch_pointer()
-                            self.dataloader.datagen_reset()
+                        while self.dataloader.data_incoming:
+                            if self.reference_parser.rnd_mode == 'neurons':
+                                self.inject_faults()
+                            self.dataloader.datagen_itr()
+                            self.__run_inference()
+                            self.set_ptfi_batch_pointer()
+                        self.dataloader.datagen_reset()
                     elif self.reference_parser.inj_policy == "per_epoch":  #here eval todo
                         self.inject_faults()
                         while self.dataloader.data_incoming:

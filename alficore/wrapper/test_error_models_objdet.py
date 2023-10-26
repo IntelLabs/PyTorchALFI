@@ -564,7 +564,7 @@ class TestErrorModels_ObjDet:
         if golden_epoch and self.resil_model_run:
             output_columns = ['nan_flag_resil_model', 'nan_or_inf_flag_resil_model', 'Nan_or_inf_layers_resil_model', 'Nan_inf_first_occurrence_resil_model']
             values = [self.nan_flag_image_resil_model, self.nan_inf_flag_image_resil_model, self.nan_inf_overall_layers_image_resil_model, self.nan_inf_first_occurrence_image_resil_model]            
-            inf_nan_dataframe = pd.DataFrame(np.array(values).T, columns = output_columns)
+            inf_nan_dataframe = pd.DataFrame(np.array(values, dtype=object).T, columns = output_columns)
             generic_file_path = os.path.join(self.outputdir, self.dataset_name, '{}_model'.format(self.resil_name), 'epochs', str(self.curr_epoch), "inf_nan")
 
             print('storing resil models nan and inf info into {}'.format(generic_file_path + '.csv'))
@@ -590,7 +590,7 @@ class TestErrorModels_ObjDet:
             if self.resil_model_FI_run:
                 output_columns = ['nan_flag_resil_corr_model', 'nan_or_inf_flag_resil_corr_model', 'Nan_or_inf_layers_resil_corr_model', 'Nan_inf_first_occurrence_resil_corr_model']
                 values = [self.nan_flag_image_resil_corr_model, self.nan_inf_flag_image_resil_corr_model, self.nan_inf_overall_layers_image_resil_corr_model, self.nan_inf_first_occurrence_image_resil_corr_model]                
-                inf_nan_dataframe = pd.DataFrame(np.array(values).T, columns = output_columns)
+                inf_nan_dataframe = pd.DataFrame(np.array(values, dtype=object).T, columns = output_columns)
                 generic_file_path = os.path.join(self.outputdir, self.dataset_name, '{}_corr_model'.format(self.resil_name), 'epochs', str(self.curr_epoch), "inf_nan")
 
                 print('storing {} resil corr models nan and inf into {}'.format(self.resil_name, generic_file_path + '.csv'))

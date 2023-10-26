@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-=======
 # Copyright 2022 Intel Corporation.
 # SPDX-License-Identifier: MIT
-
->>>>>>> 4e8defd70d3f3103c6fb5b5ecf288095b86ff587
 """
 An awesome colormap for really neat visualizations.
 Copied from Detectron, and removed gray colors.

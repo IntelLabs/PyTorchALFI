@@ -73,7 +73,7 @@
     ruamel-yaml==0.17.10
     ruamel-yaml-clib==0.2.6
     scikit-image==0.18.1
-    scikit-learn==0.24.1
+    scikit-learn==1.0.1
     seaborn==0.11.1
     setproctitle==1.2.2
     shapely==1.7.1

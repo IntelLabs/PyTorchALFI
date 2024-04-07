@@ -12,16 +12,21 @@ class ConfigParser:
         self.print = False
         self.fi_logfile = "-1"
         self.read_from_file = "-1"
+        self.dataset_size = -1
         self.num_runs = -1
         self.max_faults_per_image = -1
         self.max_fault_rate = -1.0
         self.run_type = "-1"
         self.value_type = "-1"
         self.layer_types = []
+        self.layer_types_named = []
+        self.layer_types_exclude = []
         self.rnd_mode = "-1"
         self.rnd_batch = "-1"
         self.rnd_layer = "-1"
         self.rnd_layer_weighted = False
+        self.rnd_layer_selected = False
+        self.rnd_layer_selected_num = -1
         self.rnd_location = "-1"
         self.rnd_value = "-1"
         self.rnd_value_type = "-1"
@@ -31,7 +36,7 @@ class ConfigParser:
         self.rnd_bit_range = []
         self.rnd_bit_range_exclude = []
         self.ds_location = "-1"
-        self.ds_batch_size = -1
+        self.ds_batch_size = "-1"
         self.ds_loader_class = "-1"
         self.ptf_H = -1
         self.ptf_W = -1
@@ -39,6 +44,7 @@ class ConfigParser:
         self.ptf_C = -1
         self.ptf_batch_size = -1
         self.ds_test_size = -1
+        self.fault_injec_hook_type = "-1"
         self.save_fault_file_dir = None
         self.inj_policy = None
         self.__dict__.update(entries)
@@ -51,8 +57,10 @@ class ConfigParser:
         ## TODO: Activate bitflip_bounds feature
 	    # self.layer_boundsfile = "-1"
         self.rnd_value_type_opts = ["number", "bitflip", "bitflip_bounds", "bitflip_weighted", "stuckat_0", "stuckat_1"]
-        self.layer_types_opts = ["conv2d", "fcc", "conv3d", "leakyRelu", "batchnorm"]
+        self.layer_types_opts = ["conv2d", "fcc", "conv3d", "leakyRelu", "batchnorm", "attn_fcc"]
         self.inj_policy_opts = ["per_image", "per_epoch", "per_batch"]
+        self.fault_injec_hook_type_opts = ["input", "output"]
+        
         self.reason = []
         self.valid = True
 
@@ -61,8 +69,10 @@ class ConfigParser:
                 self.print is not False):  # not boolean
             self.reason.append("Wrong value for print: {}".format(self.print))
             self.valid = False
+            
         if self.fi_logfile == "-1":
             log.info("fi_logfile not set, ignoring")
+            
         if self.read_from_file == "-1":
             log.info("read_from_file not set, ignoring")
         elif not os.path.isabs(self.read_from_file):
@@ -71,9 +81,18 @@ class ConfigParser:
                 self.reason.append("Wrong value for read_from_file {}".format(
                     self.read_from_file))
                 self.valid = False
+                
+        if self.dataset_size == -1:
+            self.reason.append("mandatory dataset_size not set")
+            self.valid = False
+        elif not self.isnumber(self.dataset_size):
+            self.reason.append("dataset_size is not a number")
+            self.valid = False
+
         if self.num_runs == -1:
             log.warning("num_runs not set, setting to 1")
             self.num_runs = 1
+
         if self.max_faults_per_image == -1:
             if self.max_fault_rate == -1.0:
                 log.warning("max_faults_per_image not set, setting to 1")
@@ -84,7 +103,6 @@ class ConfigParser:
                 if not self.isnumber(self.max_fault_rate):
                     self.reason.append("max_fault_rate is not a number")
                     self.valid = False
-
         elif not (self.max_faults_per_image == -1) \
                 and self.max_fault_rate == -1:
             if not self.isnumber(self.max_faults_per_image):
@@ -96,6 +114,7 @@ class ConfigParser:
                 "max_faults_per_image and max_fault_rate are both set,"
                 " please chose only one.")
             self.valid = False
+            
         if self.run_type == "-1":
             log.warning("run_type not set, setting to single")
             self.run_type = "single"
@@ -103,6 +122,7 @@ class ConfigParser:
             self.reason.append(
                 "Wrong value for run_type: {}".format(self.run_type))
             self.valid = False
+        
         if not self.layer_types:
             log.warning("layer_types not set, setting to conv2d")
             self.layer_types = ("conv2d")
@@ -113,17 +133,18 @@ class ConfigParser:
                         "Wrong value for layer_types: {}".format(lt))
                     self.valid = False
             self.layer_types = tuple(self.layer_types)
-        if self.rnd_mode == "-1":
-            log.warning("rnd_mode not set, setting to 'neurons'")
-            self.rnd_mode = "neurons"
-        if self.rnd_mode == 'weights':
-            if self.inj_policy not in ['per_epoch', 'per_batch']:
-                self.reason.append("Wrong value for inj_policy selected for the fault injections in weights; weight fault injection only supports 'per_epoch' and 'per_batch'")
-                self.valid = False
-        elif self.rnd_mode not in self.rnd_mode_opts:
+        
+        if not self.layer_types_named:
+            log.warning("layer_types_named is not set to any particular section of DNN, hence FI will take place across the entire the model")            
+        
+        if self.fault_injec_hook_type == "-1":
+            self.reason.append("fault_injec_hook_type not set, setting to output hooks")
+            self.fault_injec_hook_type = 'output'
+        elif (self.fault_injec_hook_type not in self.fault_injec_hook_type_opts):
             self.reason.append(
-                "Wrong value for rnd_mode: {}".format(self.rnd_mode))
-            self.valid = False
+                "Wrong value for fault_injec_hook_type: {}".format(self.fault_injec_hook_type))
+            self.valid = False       
+        
         if self.rnd_batch == "-1":
             self.reason.append("rnd_batch not set.")
             self.valid = False
@@ -131,6 +152,7 @@ class ConfigParser:
             self.reason.append(
                 "Wrong value for rnd_batch: {}".format(self.rnd_batch))
             self.valid = False
+        
         if self.rnd_layer == "-1":
             self.reason.append("rnd_batch not set.")
             self.valid = False
@@ -139,6 +161,7 @@ class ConfigParser:
             self.reason.append(
                 "Wrong value for rnd_layer: {}".format(self.rnd_layer))
             self.valid = False
+        
         if self.rnd_location == "-1":
             self.reason.append("rnd_location not set.")
             self.valid = False
@@ -154,6 +177,19 @@ class ConfigParser:
             log.warn("layer == change and location == same does not make"
                         " sense because layer dimensions differ!")
             log.warn("chaning location to 'change'")
+
+        if self.rnd_layer_selected:
+            if self.rnd_layer_weighted:
+                self.reason.append(
+                    "rnd_layer_weighted is set to True which contradicts to rnd_layer_selected_num, please choose only one of these two configuration")
+                self.valid = False
+            elif not(isinstance(self.rnd_layer_selected_num, int) and self.rnd_layer_selected_num > 0):
+                self.reason.append(
+                    "Wrong value for rnd_layer_selected_num: {}".format(self.rnd_layer_selected_num))
+                self.valid = False
+            
+        
+
         if self.rnd_value == "-1":
             self.reason.append("rnd_value not set.")
             self.valid = False
@@ -161,6 +197,7 @@ class ConfigParser:
             self.reason.append(
                 "Wrong value for rnd_value: {}".format(self.rnd_value))
             self.valid = False
+
         if self.rnd_value_type == "-1":
             self.reason.append("rnd_value_type not set.")
             self.valid = False
@@ -224,11 +261,33 @@ class ConfigParser:
                         if not x in numbers:
                             self.reason.append("rnd_bit_range_exclude contains numbers outside range of rnd_bit_range")
                             self.valid = False
-
         elif self.rnd_value_type == "stuckat_0" or self.rnd_value_type == "stuckat_1":
             if self.inj_policy != "per_epoch":
                 self.reason.append("Permanent faults: stuck at 0/1 is only compatible with injectin policy-per_epoch; current injection policy: {}".format(self.inj_policy))
                 self.valid = False
+
+        if self.rnd_mode == "-1":
+            log.warning("rnd_mode not set, setting to 'neurons'")
+            self.rnd_mode = "neurons"
+        elif self.rnd_mode == 'weights':
+            if self.rnd_value_type == "bitflip_bounds":
+                self.reason.append(
+                    "Selected rnd_mode: {} doesn't support rnd_value_type bitflip_bounds fault injection".format(self.rnd_mode))    
+                self.valid = False
+            if self.inj_policy not in ['per_epoch', 'per_batch']:
+                self.reason.append("Wrong value for inj_policy selected for the fault injections in weights; weight fault injection only supports 'per_epoch' and 'per_batch'")
+                self.valid = False
+            if self.fault_injec_hook_type == "input":
+                self.reason.append(
+                    "Selected rnd_mode: {} doesn't support fault_injec_hook_type: {}".format(self.rnd_mode, self.fault_injec_hook_type))    
+                self.valid = False
+        elif self.rnd_mode not in self.rnd_mode_opts:
+            self.reason.append(
+                "Wrong value for rnd_mode: {}".format(self.rnd_mode))
+        elif self.rnd_mode == "weights" and self.rnd_value_type == "bitflip_bounds":
+            self.reason.append(
+                "Wrong value for rnd_mode: {}".format(self.rnd_mode))    
+            self.valid = False
         ## TODO: Activate bitflip_bounds feature
         # elif self.rnd_value_type == "bitflip_bounds":
         #     if self.layer_boundsfile == "-1":
@@ -245,6 +304,7 @@ class ConfigParser:
                 "value for ptf_H is not a number: {}"
                 .format(self.ptf_H))
             self.valid = False
+
         if self.ptf_W == -1:
             self.reason.append("ptf_W not set.")
             self.valid = False
@@ -253,6 +313,7 @@ class ConfigParser:
                 "value for ptf_W is not a number: {}"
                 .format(self.ptf_W))
             self.valid = False
+
         if self.ptf_batch_size == -1:
             log.warning("ptf_batch_size not set, setting to 1.")
             self.ptf_batch_size = 1
@@ -261,9 +322,11 @@ class ConfigParser:
                 "value for ptf_batch_size is not a number: {}"
                 .format(self.ptf_batch_size))
             self.valid = False
+
         if self.ptf_C == -1:
             log.warning("ptf_C not set. Setting to 3")
             self.ptf_C = 3
+
         if "3dconv" in self.layer_types:
             if self.ptf_D == -1:
                 self.reason.append("ptf_D not set.")
@@ -286,6 +349,7 @@ class ConfigParser:
         elif self.inj_policy not in self.inj_policy_opts:
             self.reason.append(
                 "Wrong value for inj_policy: {}".format(self.inj_policy_opts))
+
         return self.valid, self.reason
 
     def isnumber(self, value):

@@ -15,7 +15,7 @@ from torchsummary import summary
 from pytorchfi.pytorchfi.errormodels import \
     single_bit_flip_func as fault_injector
 from alficore.ptfiwrap_utils.pyfihelpers import get_number_of_neurons, \
-    get_number_of_weights, random_batch_element, random_layer_element, \
+    get_number_of_weights, random_batch_element, random_layer_element, random_layer_selected, \
     random_neuron_location, random_weight_location, random_value, \
     random_layer_weighted
 from ..parser.config_parser import ConfigParser
@@ -66,6 +66,7 @@ class ptfiwrap:
         self.CURRENT_FAULTS = {}
         self.CURRENT_NUM_FAULTS = -1
         self.input_num = kwargs.get("input_num", 1)
+        self.ranger_bounds = kwargs.get("ranger_bounds", None)
         #self.cuda_device = kwargs.get("cuda_device", 0)
         self.device = kwargs.get("device", torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
         self.config_location = kwargs.get("config_location", "default.yml")
@@ -225,7 +226,7 @@ class ptfiwrap:
         # in order to access the bit flip functionality
         ptfiwrap_obj = self
         self.pytorchfi = fault_injector(
-                model=self.net, model_attr=self.parser, ptfiwrap=ptfiwrap_obj, layer_types=layer_types, input_num=self.input_num)
+                model=self.net, model_attr_parsed=self.parser, ptfiwrap=ptfiwrap_obj, layer_types=layer_types, input_num=self.input_num)
 
     def __get_numfaults(self):
     # def __get_numfaults(self, pytorchfi, num_runs, max_faults_per_image,
@@ -342,7 +343,9 @@ class ptfiwrap:
         if fix_layer > -1:
             fault["layer"] = fix_layer
         else:
-            if self.parser.rnd_layer_weighted:
+            if self.parser.rnd_layer_selected:
+                fault["layer"] = random_layer_selected(pfi_model)
+            elif self.parser.rnd_layer_weighted:
                 if self.parser.rnd_mode == "weights":
                     fault["layer"] = random_layer_weighted(pfi_model, "weights")
                 elif self.parser.rnd_mode == "neurons":
@@ -363,8 +366,7 @@ class ptfiwrap:
                 else:
                     log.error("requested channel larger than max channels for "
                               "layer, using random value")
-
-        if fi_type == rnd_types.weights:
+        elif fi_type == rnd_types.weights:
             fault["rnd_type"] = "weights"
             index = random_weight_location(pfi_model, fault["layer"])
             c = -1
@@ -397,24 +399,30 @@ class ptfiwrap:
                 return
         elif value_type in ["bitflip", "stuckat_0", "stuckat_1"] :
             fault["value_type"] = value_type
-            if bit_range:
-                if len(bit_range) == 1:
-                    fault["value"] = bit_range[0]
-                elif len(bit_range) == 2:
-                    if len(bit_range_exclude):
-                        numbers = list(range(bit_range[0], bit_range[1]))
-                        for x in bit_range_exclude:
-                            numbers.remove(x)
-                        fault["value"] = random.choice(numbers)
-                    else:
-                        fault["value"] = random.randint(bit_range[0], bit_range[1])
-                else:  # other values make no sense here
-                    pass
-            elif value_bits > -1:
-                fault["value"] = random.randint(0, value_bits - 1)
-            else:
-                log.error("No max bits given for {}!".format(value_type))
-                return
+            if value_type =="bitflip":
+                if bit_range:
+                    if len(bit_range) == 1:
+                        fault["value"] = bit_range[0]
+                    elif len(bit_range) == 2:
+                        if len(bit_range_exclude):
+                            numbers = list(range(bit_range[0], bit_range[1]))
+                            for x in bit_range_exclude:
+                                numbers.remove(x)
+                            fault["value"] = random.choice(numbers)
+                        else:
+                            fault["value"] = random.randint(bit_range[0], bit_range[1])
+                    else:  # other values make no sense here
+                        pass
+
+                elif value_bits > -1:
+                    fault["value"] = random.randint(0, value_bits - 1)
+                else:
+                    log.error("No max bits given for {}!".format(value_type))
+                    return
+            elif value_type == "stuckat_0":
+                fault["value"] = 0
+            elif value_type == "stuckat_1":
+                fault["value"] = 1
         ## TODO: Activate bitflip_bounds feature
         # elif value_type in ["bitflip_bounds", "bitflip_weighted"]:
         else:
@@ -950,7 +958,7 @@ class ptfiwrap:
                     clip=d,
                     h=h,
                     w=w,
-                    function=pytorchfi.single_bit_flip_signed_across_batch)
+                    function=pytorchfi.single_bit_flip_signed_across_batch, pre_hook_function=pytorchfi.pre_hook_single_bit_flip_signed_across_batch)
         else:
             if rnd_value_type == "number":
                 inj_model = pytorchfi.declare_weight_fi(

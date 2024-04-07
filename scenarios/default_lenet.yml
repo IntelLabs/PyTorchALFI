@@ -64,6 +64,7 @@ run_type: single
 # or weights respectively in the model
 # b: layer_types (either conv2d, conv3d or fcc) relevant neurons or weights are those related to the selected layer type
 num_runs: 1
+dataset_size: 1 
 # you can only set one of num_faults_per_image or max_fault_rate
 max_faults_per_image: 1
 #max_fault_rate: 0.01

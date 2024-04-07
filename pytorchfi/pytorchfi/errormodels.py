@@ -20,6 +20,8 @@ helper functions
 def random_batch_element(pfi_model):
     return random.randint(0, pfi_model.get_total_batches() - 1)
 
+def random_layer_selected(pfi_model):
+    return pfi_model.get_random_layer_selected()
 
 def random_neuron_location(pfi_model, conv=-1):
     if conv == -1:
@@ -49,13 +51,13 @@ def random_weight_location(pfi_model, conv=-1):
     curr_layer = 0
     layer_dim = 0
     tmp_param_size = []
-    for module in pfi_model.get_original_model().modules():
+    for module_name, module in pfi_model.get_original_model().named_modules():
         # for name, param in pfi_model.get_original_model().named_parameters():
         # print(type(module))
         # if "conv" in name and "weight" in name:
         # todo verify position of k
         # print("Type {}".format(type(module)))
-        if __verify_layer(pfi_model, module):
+        if __layer_check(pfi_model, module, module_name):
             for name, param in module.named_parameters():
                 tmp_param_size.append(list(param.size()))
                 if curr_layer == corrupt_layer and "weight" in name:
@@ -79,8 +81,8 @@ def random_weight_location(pfi_model, conv=-1):
 
 def get_number_of_weights(pfi_model):
     size = 0
-    for module in pfi_model.get_original_model().modules():
-        if __verify_layer(pfi_model, module):
+    for module_name, module in pfi_model.get_original_model().named_modules():
+        if __layer_check(pfi_model, module, module_name):
             size += sum(
                 param.numel() for name, param in module.named_parameters()
                 if "weight" in name)
@@ -90,17 +92,37 @@ def get_number_of_weights(pfi_model):
 def get_number_of_neurons(pfi_model):
     return pfi_model.get_neuron_num()
 
+def get_input_number_of_neurons(pfi_model):
+    return pfi_model.get_input_neuron_num()
 
-def __verify_layer(pfi_model, module):
+
+def __layer_check(pfi_model, module, module_name=None):
     ret = False
-    if isinstance(module, nn.Conv2d) or isinstance(module, nn.Conv3d) \
-            or isinstance(module, nn.Linear):
-        if pfi_model.LAYER_TYPE_CONV2D and isinstance(module, nn.Conv2d):
+    if pfi_model.LAYER_TYPES_NAMED:
+        check_layer_types_named = any([layer_types_named in module_name for layer_types_named in pfi_model.LAYER_TYPES_NAMED])
+        ## filtering NonDynamicallyQuantizableLinear layers:
+        check_layer_types_named = check_layer_types_named and not('out_proj' in module_name)
+        if isinstance(module, nn.Linear) and pfi_model.LAYER_TYPE_ATT and check_layer_types_named:
             ret = True
-        elif pfi_model.LAYER_TYPE_CONV3D and isinstance(module, nn.Conv3d):
+        if isinstance(module, nn.modules.sparse.Embedding) and pfi_model.LAYER_TYPE_ATT_EMBED and check_layer_types_named:
             ret = True
-        elif pfi_model.LAYER_TYPE_FCC and isinstance(module, nn.Linear):
+        if isinstance(module, nn.Linear) and pfi_model.LAYER_TYPE_FCC and check_layer_types_named:
             ret = True
+    else:
+        if isinstance(module, nn.Conv2d) and pfi_model.LAYER_TYPE_CONV2D:
+            ret = True
+        elif isinstance(module, nn.Conv3d) and pfi_model.LAYER_TYPE_CONV3D:
+            ret = True
+        elif isinstance(module, nn.Linear) and pfi_model.LAYER_TYPE_FCC:
+            ret = True
+        elif isinstance(module, nn.modules.activation.LeakyReLU) and pfi_model.LAYER_TYPE_LeakyRelu:
+            ret = True
+        elif isinstance(module, nn.modules.batchnorm.BatchNorm2d) and pfi_model.LAYER_TYPE_BatchNorm:
+            ret = True
+    if pfi_model.LAYER_TYPES_EXCLUDE:
+        check_layer_types_exclude = any([layer_types_exclude in module_name for layer_types_exclude in pfi_model.LAYER_TYPES_EXCLUDE])
+        if check_layer_types_exclude:
+            ret = False
     return ret
 
 
@@ -383,14 +405,13 @@ def random_inj_per_layer_batched(
 
 
 class single_bit_flip_func(core.fault_injection):
-    def __init__(self, model, model_attr, **kwargs):
-        super().__init__(model, h=model_attr.ptf_H, w=model_attr.ptf_W, batch_size=model_attr.ptf_batch_size, \
-            c=model_attr.ptf_C, clip=model_attr.ptf_D, **kwargs)
+    def __init__(self, model, model_attr_parsed, **kwargs):
+        super().__init__(model, model_attr_parsed=model_attr_parsed, **kwargs)
         logging.basicConfig(
             format="%(asctime)-15s %(clientip)s %(user)-8s %(message)s")
         logging.getLogger().setLevel('INFO')
         self.bits = kwargs.get("bits", 8)
-        self.rnd_value_type = model_attr.rnd_value_type
+        self.model_attr_parsed = model_attr_parsed
         self.ptfiwrap = kwargs.get("ptfiwrap", None)
         self.bit_loc = None
         self.ptfi_batch_pointer = -1
@@ -400,14 +421,12 @@ class single_bit_flip_func(core.fault_injection):
         self.bit_flips_direc = np.array([None]*self.total_captured_faults)
         self.bit_flips_monitor = np.array([None]*self.total_captured_faults)
         self.value_monitor = np.array([[None]*self.total_captured_faults,[None]*self.total_captured_faults])
-        ## TODO: Activate bitflip_bounds feature
-        # if model_attr.rnd_value_type == "bitflip_bounds":
-        #     self.bounds = get_savedBounds_minmax(model_attr.layer_boundsfile)
+        self.layer_call_counter = 0
 
     @classmethod
     def from_kwargs(cls, model, c=1, h=32, w=32, clip=-1, batch_size=1, rnd_value_type='bitflip', **kwargs):
-        model_attr = Map_Dict({"ptf_C": c, "ptf_H":h, "ptf_W":w, "ptf_D":clip, "ptf_batch_size":batch_size, "rnd_value_type":rnd_value_type})
-        return cls(model, model_attr, **kwargs)
+        model_attr_parsed = Map_Dict({"ptf_C": c, "ptf_H":h, "ptf_W":w, "ptf_D":clip, "ptf_batch_size":batch_size, "rnd_value_type":rnd_value_type})
+        return cls(model, model_attr_parsed, **kwargs)
 
     def compute_runset_length(self):
         if self.ptfiwrap:
@@ -498,7 +517,7 @@ class single_bit_flip_func(core.fault_injection):
         return torch.tensor(new_value, dtype=save_type)
 
     def __single_bit_flip(self, orig_value, bit_pos):
-        array_pointer = self.ptfi_batch_pointer + self.ptfi_batch_pointer_curr
+        array_pointer = self.ptfi_batch_pointer_curr
         save_type = orig_value.dtype
         float_to_bin = ''.join(bin(c).replace('0b', '').rjust(8, '0')
                                 for c in struct.pack('!f', orig_value.item()))
@@ -508,19 +527,19 @@ class single_bit_flip_func(core.fault_injection):
         # float_to_bin[bit_pos] = 1 - float_to_bin[bit_pos] # 1 to 0 or 0 to 1
         # logging.info("original value: {}".format(orig_value))
         # logging.info("original bitmap: {}".format(float_to_bin))
-        self.bit_flips_monitor[array_pointer] = bit_pos
+        # self.bit_flips_monitor[array_pointer] = bit_pos
         if float_to_bin[bit_pos] == "1":
             new_float = float_to_bin[:bit_pos] + '0' + float_to_bin[bit_pos+1:]
-            self.bit_flips_direc[array_pointer] = 0
+            # self.bit_flips_direc[array_pointer] = 0
         else:
             new_float = float_to_bin[:bit_pos] + '1' + float_to_bin[bit_pos+1:]
-            self.bit_flips_direc[array_pointer] = 1
+            # self.bit_flips_direc[array_pointer] = 1
         # logging.info("changed bitmap: {}".format(new_float))
         f = int(new_float, 2)
         bin_to_float = struct.unpack('f', struct.pack('I', f))[0]
         corr_value = torch.tensor(bin_to_float, dtype=save_type)
-        self.value_monitor[0, array_pointer] = orig_value.item()
-        self.value_monitor[1, array_pointer] = corr_value.item()        
+        # self.value_monitor[0, array_pointer] = orig_value.item()
+        # self.value_monitor[1, array_pointer] = corr_value.item()        
         return corr_value
 
     def single_bit_flip(self, orig_value, bit_pos):
@@ -556,34 +575,43 @@ class single_bit_flip_func(core.fault_injection):
         All bits are searched and the one with higher weightage is chosen.
         Assuming it is IEEE 32 bit format
         """
-        array_pointer = self.ptfi_batch_pointer + self.ptfi_batch_pointer_curr
+        array_pointer = self.ptfi_batch_pointer_curr
         save_type = orig_value.dtype
         ## 
         bounds = [min(orig_value, bounds[0]), max(orig_value, bounds[1])]
         bit_pos_ = np.array([]).astype(np.uint)
         weighted_bits = np.array([])
+        flipped_vals= []
         for i in range(32):
             flipped_val = self.__single_bit_flip(orig_value, i).item()
             if flipped_val >= bounds[0] and flipped_val <= bounds[1]:
                 weighted_bits = np.append(weighted_bits, fabs(flipped_val - orig_value.item()))
                 bit_pos_ = np.append(bit_pos_, i)
+                flipped_vals.append(flipped_val)
         weighted_bits = weighted_bits/weighted_bits.sum()
         bit_pos =int(random.choices(population=bit_pos_, k=1, weights=weighted_bits)[0])
+        
+        ## choosing the maximum 
+        bit_pos = np.argmax(flipped_vals)
         float_to_bin = ''.join(bin(c).replace('0b', '').rjust(8, '0')
                                 for c in struct.pack('!f', orig_value))
         assert (len(float_to_bin) - 1 >= bit_pos),\
             "Bit position {} too large for size of value: {}"\
             .format(bit_pos, len(float_to_bin))
-        self.bit_flips_monitor = np.append(self.bit_flips_monitor, bit_pos)
+        # self.bit_flips_monitor = np.append(self.bit_flips_monitor, bit_pos)
+        # self.bit_flips_monitor[array_pointer] = bit_pos
         if float_to_bin[bit_pos] == "1":
             new_float = float_to_bin[:bit_pos] + '0' + float_to_bin[bit_pos+1:]
-            self.bit_flips_direc = np.append(self.bit_flips_direc, 0)
+            self.bit_flips_direc[array_pointer] = 0
         else:
             new_float = float_to_bin[:bit_pos] + '1' + float_to_bin[bit_pos+1:]
-            self.bit_flips_direc = np.append(self.bit_flips_direc, 1)
+            self.bit_flips_direc[array_pointer] = 1
         # logging.info("changed bitmap: {}".format(new_float))
         f = int(new_float, 2)
         bin_to_float = struct.unpack('f', struct.pack('I', f))[0]
+        self.bit_flips_monitor[array_pointer] = bit_pos
+        self.value_monitor[0, array_pointer] = orig_value.item()
+        self.value_monitor[1, array_pointer] = bin_to_float
         return torch.tensor(bin_to_float, dtype=save_type)
 
     def single_bit_flip_stuckat(self, orig_value, bit_pos, stuckat:int):
@@ -646,6 +674,7 @@ class single_bit_flip_func(core.fault_injection):
         # range_max = self.get_conv_max(self.get_curr_conv())
         # logging.info("curr_conv: {}".format(self.get_curr_conv()))
         # logging.info("range_max", range_max)
+        # self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer
         prev_value = torch.tensor(orig_value)
         if type(self.bit_loc) == CircularBuffer:
             bit_loc = self.bit_loc.front()
@@ -659,165 +688,352 @@ class single_bit_flip_func(core.fault_injection):
         # logging.info("rand_bit: {}".format(rand_bit))
         # new_value = self._flip_bit_signed(prev_value, range_max, rand_bit)
         new_value = self.single_bit_flip(prev_value, rand_bit)
-
         return new_value
 
     def single_bit_flip_signed_across_batch(self, module, input, output):
-            corrupt_conv_set = self.get_corrupt_conv()
-            # range_max = self.get_conv_max(self.get_curr_conv())
-            # logging.info("curr_conv: {}".format(self.get_curr_conv()))
-            # logging.info("range_max", range_max)
-            # print("in bitflip: module id {}".format(id(module)))
-            # print(self.get_curr_conv())
-            if len(module.new_id) > 1:
-                curr_id = module.new_id.pop(0)
-            else:
-                curr_id = module.new_id[0]
+        corrupt_conv_set = self.get_corrupt_conv()
+        # range_max = self.get_conv_max(self.get_curr_conv())
+        # logging.info("curr_conv: {}".format(self.get_curr_conv()))
+        # logging.info("range_max", range_max)
+        # print("in bitflip: module id {}".format(id(module)))
+        # print(self.get_curr_conv())
+        if len(module.new_id) > 1:
+            curr_id = module.new_id.pop(0)
+        else:
+            curr_id = module.new_id[0]
 
-            if type(corrupt_conv_set) == list:
-                inj_list = list(
-                    filter(
-                        lambda x: corrupt_conv_set[x] == curr_id,
-                        range(len(corrupt_conv_set)),
-                    )
+        if type(corrupt_conv_set) == list:
+            inj_list = list(
+                filter(
+                    lambda x: corrupt_conv_set[x] == curr_id,
+                    range(len(corrupt_conv_set)),
                 )
-                for i in inj_list:
-                    self.assert_inj_bounds(index=i)
+            )
+            for i in inj_list:
+                self.assert_inj_bounds(index=i)
 
-                    # print(list(output.size()))
-                    # print("batch {} C {} H {} W {}".format(self.CORRUPT_BATCH[i],
-                    # self.CORRUPT_C[i],self.CORRUPT_H[i],self.CORRUPT_W[i]))
-                    real_batch = list(output.size())[0]
-                    if self.CORRUPT_C[i] >= 0:
-                        if self.CORRUPT_BATCH[i] >= real_batch:
+                # print(list(output.size()))
+                # print("batch {} C {} H {} W {}".format(self.CORRUPT_BATCH[i],
+                # self.CORRUPT_C[i],self.CORRUPT_H[i],self.CORRUPT_W[i]))
+                real_batch = list(output.size())[0]
+                if self.CORRUPT_C[i] >= 0:
+                    if self.CORRUPT_BATCH[i] >= real_batch:
+                        """
+                        TODO: few models like faster-rcnn (detectron2 need this)
+                        In few object detection models, the tensor shape in intermediate layers
+                        gets expanded from [B, C_i, H_i, W_i] to [B * N, C_k, H_k, W_k]
+                        N = number of object proposals/bounding box proposals (dependent on model's architecture)
+                        self.CORRUPT_BATCH[i] = real_batch - 1
+                        """
+                        return
+                    if self.CORRUPT_CLIP[i] >= 0:  # 3dconv layer
+                        # print(list(output.size()))
+                        # print("{}".format(self.CORRUPT_BATCH))
+                        prev_value = output[self.CORRUPT_BATCH[i]][
+                            self.CORRUPT_C[i]][self.CORRUPT_CLIP[i]][
+                                self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ]
+                    else:  # 2DConv layer
+                        prev_value = output[self.CORRUPT_BATCH[i]][
+                            self.CORRUPT_C[i]][self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ]
+                else:
+                    try:
+                        # prev_value = output[self.CORRUPT_H[i]][self.CORRUPT_W[i]]
+                        prev_value = output[self.CORRUPT_BATCH[i]][self.CORRUPT_H[i]][self.CORRUPT_W[i]]
+                    except:
+                        # prev_value = output[self.CORRUPT_BATCH[i]][self.CORRUPT_H[i][self.CORRUPT_W[i]]
+                        prev_value = output[self.CORRUPT_H[i]][self.CORRUPT_W[i]]
+
+                self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer + i
+                if isinstance(self.bit_loc, CircularBuffer):
+                    bit_loc = self.bit_loc.buffer[i]
+                else:
+                    bit_loc = self.bit_loc
+                if bit_loc == -1:
+                    rand_bit = random.randint(0, self.bits - 1)
+                else:
+                    rand_bit = bit_loc
+
+                # logging.info("rand_bit: {}".format(rand_bit))
+                # new_value = self._flip_bit_signed(prev_value,
+                # range_max, rand_bit)
+                if self.model_attr_parsed.rnd_value_type=='bitflip_bounds':
+                    new_value = self.single_bit_flip_bounds(prev_value, bounds=self.ptfiwrap.ranger_bounds[self.layer_call_counter])
+                else:
+                    new_value = self.single_bit_flip(prev_value, rand_bit)
+
+                # TODO support 3d conv
+                if self.CORRUPT_C[i] >= 0:
+                    if self.CORRUPT_CLIP[i] >= 0:  # 3dconv layer
+                        output[self.CORRUPT_BATCH[i]][self.CORRUPT_C[i]][
+                            self.CORRUPT_CLIP[i]][self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ] = new_value
+                    else:
+                        output[self.CORRUPT_BATCH[i]][self.CORRUPT_C[i]][
+                            self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ] = new_value
+                else:
+                    try:
+                        # output[self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
+                        output[self.CORRUPT_BATCH[i]][self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
+                    except:
+                        # output[self.CORRUPT_BATCH[i]][self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
+                        output[self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
+        else:   
+            self.assert_inj_bounds()
+            corrupt_name = self.OUTPUT_LOOKUP[corrupt_conv_set]
+            # logging.debug("module.new_name {} corrupt_name {}".
+            # format(module.new_name,corrupt_name))
+            prev_value = torch.tensor(0)
+            if curr_id == corrupt_conv_set:
+                if self.CORRUPT_C >= 0:
+                    if self.CORRUPT_CLIP >= 0:  # 3dconv layer
+                        # print(list(output.size()))
+                        # print("{}".format(self.CORRUPT_BATCH))
+                        real_batch = list(output.size())[0]
+                        if self.CORRUPT_BATCH >= real_batch:
+                            self.CORRUPT_BATCH = real_batch - 1
+                        prev_value = output[self.CORRUPT_BATCH][
+                            self.CORRUPT_C][self.CORRUPT_CLIP][self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ]
+                    else:  # 2DConv layer
+                        real_batch = list(output.size())[0]
+                        if self.CORRUPT_BATCH >= real_batch:
+                            # self.CORRUPT_BATCH = real_batch - 1
                             """
-                            TODO: few models like faster-rcnn (detectron2 need this)
+                            @debug 
                             In few object detection models, the tensor shape in intermediate layers
                             gets expanded from [B, C_i, H_i, W_i] to [B * N, C_k, H_k, W_k]
                             N = number of object proposals/bounding box proposals (dependent on model's architecture)
-                            self.CORRUPT_BATCH[i] = real_batch - 1
                             """
-                            return
-                        if self.CORRUPT_CLIP[i] >= 0:  # 3dconv layer
-                            # print(list(output.size()))
-                            # print("{}".format(self.CORRUPT_BATCH))
-                            prev_value = output[self.CORRUPT_BATCH[i]][
-                                self.CORRUPT_C[i]][self.CORRUPT_CLIP[i]][
-                                    self.CORRUPT_H[i]][
-                                self.CORRUPT_W[i]
-                            ]
-                        else:  # 2DConv layer
-                            prev_value = output[self.CORRUPT_BATCH[i]][
-                                self.CORRUPT_C[i]][self.CORRUPT_H[i]][
-                                self.CORRUPT_W[i]
-                            ]
-                    else:
-                        if self.CORRUPT_H[i] >= real_batch:
-                            #self.CORRUPT_BATCH[i] = real_batch - 1
-                            return
-                        prev_value = output[self.CORRUPT_H[i]][self.CORRUPT_W[i]]
-
-                    self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer + i
-                    if isinstance(self.bit_loc, CircularBuffer):
-                        bit_loc = self.bit_loc.buffer[i]
-                    else:
-                        bit_loc = self.bit_loc
-                    if bit_loc == -1:
-                        rand_bit = random.randint(0, self.bits - 1)
-                    else:
-                        rand_bit = bit_loc
-
-                    # logging.info("rand_bit: {}".format(rand_bit))
-                    # new_value = self._flip_bit_signed(prev_value,
-                    # range_max, rand_bit)
-                    if self.rnd_value_type == "bitflip" or self.rnd_value_type == "stuckat_1":
-                        new_value = self.single_bit_flip(prev_value, rand_bit)
-                    ## TODO: Activate bitflip_bounds feature
-                    # elif self.rnd_value_type == "bitflip_bounds":
-                    #     new_value = self.single_bit_flip_bounds(prev_value, bounds=self.bounds[curr_id])
-                    elif self.rnd_value_type == "bitflip_weighted":
-                        new_value = self.single_bit_flip_weighted(prev_value)
-                    # logging.info("new value: {}\n".format(new_value))
-                    # TODO support 3d conv
-                    if self.CORRUPT_C[i] >= 0:
-                        if self.CORRUPT_CLIP[i] >= 0:  # 3dconv layer
-                            output[self.CORRUPT_BATCH[i]][self.CORRUPT_C[i]][
-                                self.CORRUPT_CLIP[i]][self.CORRUPT_H[i]][
-                                self.CORRUPT_W[i]
-                            ] = new_value
-                        else:
-                            output[self.CORRUPT_BATCH[i]][self.CORRUPT_C[i]][
-                                self.CORRUPT_H[i]][
-                                self.CORRUPT_W[i]
-                            ] = new_value
-                    else:
-                        output[self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
-            else:
-                self.assert_inj_bounds()
-                corrupt_name = self.OUTPUT_LOOKUP[corrupt_conv_set]
-                # logging.debug("module.new_name {} corrupt_name {}".
-                # format(module.new_name,corrupt_name))
-                prev_value = torch.tensor(0)
-                if curr_id == corrupt_conv_set:
-                    if self.CORRUPT_C >= 0:
-                        if self.CORRUPT_CLIP >= 0:  # 3dconv layer
-                            # print(list(output.size()))
-                            # print("{}".format(self.CORRUPT_BATCH))
-                            real_batch = list(output.size())[0]
-                            if self.CORRUPT_BATCH >= real_batch:
-                                self.CORRUPT_BATCH = real_batch - 1
-                            prev_value = output[self.CORRUPT_BATCH][
-                                self.CORRUPT_C][self.CORRUPT_CLIP][self.CORRUPT_H][
-                                self.CORRUPT_W
-                            ]
-                        else:  # 2DConv layer
-                            real_batch = list(output.size())[0]
-                            if self.CORRUPT_BATCH >= real_batch:
-                                # self.CORRUPT_BATCH = real_batch - 1
-                                """
-                                @debug 
-                                In few object detection models, the tensor shape in intermediate layers
-                                gets expanded from [B, C_i, H_i, W_i] to [B * N, C_k, H_k, W_k]
-                                N = number of object proposals/bounding box proposals (dependent on model's architecture)
-                                """
-                                self.CORRUPT_BATCH = real_batch - 1
-                            prev_value = output[self.CORRUPT_BATCH][
-                                self.CORRUPT_C][
-                                self.CORRUPT_H][
-                                self.CORRUPT_W
-                            ]
-                    else:
+                            self.CORRUPT_BATCH = real_batch - 1
+                        prev_value = output[self.CORRUPT_BATCH][
+                            self.CORRUPT_C][
+                            self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ]
+                else:
+                    ## TODO DEBUG check if this is used even for FCC or FFN layers
+                    try:
+                        prev_value = output[self.CORRUPT_BATCH][self.CORRUPT_H][self.CORRUPT_W]
+                        # prev_value = output[self.CORRUPT_H][self.CORRUPT_W]
+                    except:
+                        # prev_value = output[self.CORRUPT_BATCH][self.CORRUPT_H][self.CORRUPT_W]
                         prev_value = output[self.CORRUPT_H][self.CORRUPT_W]
 
-                    if type(self.bit_loc) == CircularBuffer:
-                        bit_loc = self.bit_loc.front()
-                    else:
-                        bit_loc = self.bit_loc
-                    if bit_loc == -1:
-                        rand_bit = random.randint(0, self.bits - 1)
-                    else:
-                        rand_bit = bit_loc
-                    self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer
-                    # logging.info("rand_bit: {}".format(rand_bit))
-                    # new_value = self._flip_bit_signed(prev_value,
-                    # range_max, rand_bit)
+                if type(self.bit_loc) == CircularBuffer:
+                    bit_loc = self.bit_loc.front()
+                else:
+                    bit_loc = self.bit_loc
+                if bit_loc == -1:
+                    rand_bit = random.randint(0, self.bits - 1)
+                else:
+                    rand_bit = bit_loc
+                self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer
+                # logging.info("rand_bit: {}".format(rand_bit))
+                # new_value = self._flip_bit_signed(prev_value,
+                # range_max, rand_bit)
+                if self.model_attr_parsed.rnd_value_type=='bitflip_bounds':
+                    new_value = self.single_bit_flip_bounds(prev_value, bounds=self.ptfiwrap.ranger_bounds[self.layer_call_counter])
+                else:
                     new_value = self.single_bit_flip(prev_value, rand_bit)
-                    # logging.info("new value: {}\n".format(new_value))
-                    # TODO support 3d conv
-                    if self.CORRUPT_C >= 0:
-                        if self.CORRUPT_CLIP >= 0:  # 3dconv layer
-                            output[self.CORRUPT_BATCH][self.CORRUPT_C][
-                                self.CORRUPT_CLIP][self.CORRUPT_H][
-                                self.CORRUPT_W
-                            ] = new_value
-                        else:
-                            output[self.CORRUPT_BATCH][self.CORRUPT_C][
-                                self.CORRUPT_H][
-                                self.CORRUPT_W
-                            ] = new_value
+                # logging.info("new value: {}\n".format(new_value))
+                # TODO support 3d conv
+                if self.CORRUPT_C >= 0:
+                    if self.CORRUPT_CLIP >= 0:  # 3dconv layer
+                        output[self.CORRUPT_BATCH][self.CORRUPT_C][
+                            self.CORRUPT_CLIP][self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ] = new_value
                     else:
+                        output[self.CORRUPT_BATCH][self.CORRUPT_C][
+                            self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ] = new_value
+                else:
+                    ## TODO DEBUG check if this is used even for FCC or FFN layers
+                    try:
+                        # output[self.CORRUPT_H][self.CORRUPT_W] = new_value
+                        output[self.CORRUPT_BATCH][self.CORRUPT_H][self.CORRUPT_W] = new_value
+                    except:
+                        # output[self.CORRUPT_BATCH][self.CORRUPT_H][self.CORRUPT_W] = new_value
                         output[self.CORRUPT_H][self.CORRUPT_W] = new_value
+        self.layer_call_counter+=1
 
+    def pre_hook_single_bit_flip_signed_across_batch(self, module, input):
+        corrupt_conv_set = self.get_corrupt_conv()
+        # range_max = self.get_conv_max(self.get_curr_conv())
+        # logging.info("curr_conv: {}".format(self.get_curr_conv()))
+        # logging.info("range_max", range_max)
+        # print("in bitflip: module id {}".format(id(module)))
+        # print(self.get_curr_conv())
+        if len(module.new_id) > 1:
+            curr_id = module.input_new_id.pop(0)
+        else:
+            curr_id = module.input_new_id[0]
+
+        if type(corrupt_conv_set) == list:
+            inj_list = list(
+                filter(
+                    lambda x: corrupt_conv_set[x] == curr_id,
+                    range(len(corrupt_conv_set)),
+                )
+            )
+            for i in inj_list:
+                self.assert_inj_bounds_input(index=i)
+
+                # print(list(input.size()))
+                # print("batch {} C {} H {} W {}".format(self.CORRUPT_BATCH[i],
+                # self.CORRUPT_C[i],self.CORRUPT_H[i],self.CORRUPT_W[i]))
+                real_batch = list(input[0].size())[0]
+                if self.CORRUPT_C[i] >= 0:
+                    if self.CORRUPT_BATCH[i] >= real_batch:
+                        """
+                        TODO: few models like faster-rcnn (detectron2 need this)
+                        In few object detection models, the tensor shape in intermediate layers
+                        gets expanded from [B, C_i, H_i, W_i] to [B * N, C_k, H_k, W_k]
+                        N = number of object proposals/bounding box proposals (dependent on model's architecture)
+                        self.CORRUPT_BATCH[i] = real_batch - 1
+                        """
+                        return
+                    if self.CORRUPT_CLIP[i] >= 0:  # 3dconv layer
+                        # print(list(input.size()))
+                        # print("{}".format(self.CORRUPT_BATCH))
+                        prev_value = input[0][self.CORRUPT_BATCH[i]][
+                            self.CORRUPT_C[i]][self.CORRUPT_CLIP[i]][
+                                self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ]
+                    else:  # 2DConv layer
+                        prev_value = input[0][self.CORRUPT_BATCH[i]][
+                            self.CORRUPT_C[i]][self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ]
+                else:
+                    try:
+                        prev_value = input[0][self.CORRUPT_H[i]][self.CORRUPT_W[i]]
+                    except:
+                        prev_value = input[0][self.CORRUPT_BATCH[i]][self.CORRUPT_H[i]][self.CORRUPT_W[i]]
+
+                self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer + i
+                if isinstance(self.bit_loc, CircularBuffer):
+                    bit_loc = self.bit_loc.buffer[i]
+                else:
+                    bit_loc = self.bit_loc
+                if bit_loc == -1:
+                    rand_bit = random.randint(0, self.bits - 1)
+                else:
+                    rand_bit = bit_loc
+
+                # logging.info("rand_bit: {}".format(rand_bit))
+                # new_value = self._flip_bit_signed(prev_value,
+                # range_max, rand_bit)
+                if self.model_attr_parsed.rnd_value_type=='bitflip_bounds':
+                    new_value = self.single_bit_flip_bounds(prev_value, bounds=self.ptfiwrap.ranger_bounds[self.layer_call_counter])
+                else:
+                    new_value = self.single_bit_flip(prev_value, rand_bit)
+
+                # TODO support 3d conv
+                if self.CORRUPT_C[i] >= 0:
+                    if self.CORRUPT_CLIP[i] >= 0:  # 3dconv layer
+                        input[0][self.CORRUPT_BATCH[i]][self.CORRUPT_C[i]][
+                            self.CORRUPT_CLIP[i]][self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ] = new_value
+                    else:
+                        input[0][self.CORRUPT_BATCH[i]][self.CORRUPT_C[i]][
+                            self.CORRUPT_H[i]][
+                            self.CORRUPT_W[i]
+                        ] = new_value
+                else:
+                    try:
+                        input[0][self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
+                    except:
+                        input[0][self.CORRUPT_BATCH[i]][self.CORRUPT_H[i]][self.CORRUPT_W[i]] = new_value
+        else:   
+            self.assert_inj_bounds_input()
+            corrupt_name = self.INPUT_LOOKUP[corrupt_conv_set]
+            # logging.debug("module.new_name {} corrupt_name {}".
+            # format(module.new_name,corrupt_name))
+            prev_value = torch.tensor(0)
+            if curr_id == corrupt_conv_set:
+                if self.CORRUPT_C >= 0:
+                    if self.CORRUPT_CLIP >= 0:  # 3dconv layer
+                        # print(list(input.size()))
+                        # print("{}".format(self.CORRUPT_BATCH))
+                        real_batch = list(input[0].size())[0]
+                        if self.CORRUPT_BATCH >= real_batch:
+                            self.CORRUPT_BATCH = real_batch - 1
+                        prev_value = input[0][self.CORRUPT_BATCH][
+                            self.CORRUPT_C][self.CORRUPT_CLIP][self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ]
+                    else:  # 2DConv layer
+                        real_batch = list(input[0].size())[0]
+                        if self.CORRUPT_BATCH >= real_batch:
+                            # self.CORRUPT_BATCH = real_batch - 1
+                            """
+                            @debug 
+                            In few object detection models, the tensor shape in intermediate layers
+                            gets expanded from [B, C_i, H_i, W_i] to [B * N, C_k, H_k, W_k]
+                            N = number of object proposals/bounding box proposals (dependent on model's architecture)
+                            """
+                            self.CORRUPT_BATCH = real_batch - 1
+                        prev_value = input[0][self.CORRUPT_BATCH][
+                            self.CORRUPT_C][
+                            self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ]
+                else:
+                    ## TODO DEBUG check if this is used even for FCC or FFN layers
+                    try:
+                        prev_value = input[0][self.CORRUPT_H][self.CORRUPT_W]
+                    except:
+                        prev_value = input[0][self.CORRUPT_BATCH][self.CORRUPT_H][self.CORRUPT_W]
+
+                if type(self.bit_loc) == CircularBuffer:
+                    bit_loc = self.bit_loc.front()
+                else:
+                    bit_loc = self.bit_loc
+                if bit_loc == -1:
+                    rand_bit = random.randint(0, self.bits - 1)
+                else:
+                    rand_bit = bit_loc
+                self.ptfi_batch_pointer_curr = self.ptfi_batch_pointer
+                # logging.info("rand_bit: {}".format(rand_bit))
+                # new_value = self._flip_bit_signed(prev_value,
+                # range_max, rand_bit)
+                if self.model_attr_parsed.rnd_value_type=='bitflip_bounds':
+                    new_value = self.single_bit_flip_bounds(prev_value, bounds=self.ptfiwrap.ranger_bounds[self.layer_call_counter])
+                else:
+                    new_value = self.single_bit_flip(prev_value, rand_bit)
+                # logging.info("new value: {}\n".format(new_value))
+                # TODO support 3d conv
+                if self.CORRUPT_C >= 0:
+                    if self.CORRUPT_CLIP >= 0:  # 3dconv layer
+                        input[0][self.CORRUPT_BATCH][self.CORRUPT_C][
+                            self.CORRUPT_CLIP][self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ] = new_value
+                    else:
+                        input[0][self.CORRUPT_BATCH][self.CORRUPT_C][
+                            self.CORRUPT_H][
+                            self.CORRUPT_W
+                        ] = new_value
+                else:
+                    ## TODO DEBUG check if this is used even for FCC or FFN layers
+                    try:
+                        input[0][self.CORRUPT_H][self.CORRUPT_W] = new_value
+                    except:
+                        input[0][self.CORRUPT_BATCH][self.CORRUPT_H][self.CORRUPT_W] = new_value
+        self.layer_call_counter+=1
+        
 def random_neuron_single_bit_inj_batched(
         pfi_model, layer_ranges, randLoc=True):
     pfi_model.set_conv_max(layer_ranges)

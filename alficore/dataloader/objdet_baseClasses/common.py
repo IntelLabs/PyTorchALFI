@@ -366,7 +366,7 @@ def pytorchFI_objDet_inputcheck(inputs, dummy=False):
         return inputs
     except AssertionError:
         if dummy == False:
-            logging.warning("Input to the model doesnt meet the requirement of pytorchFI object detection component")
+            logging.warning("Input to the model doesnt meet the requirement of pytorchALFI object detection component")
         inputs = [{'image': inputs[_bs], 'image_id': _bs} for _bs in range(batch_size)]
         return inputs
 
@@ -380,7 +380,7 @@ def pytorchFI_objDet_outputcheck(outputs):
         assert all(_keys in input_sample_dict_keys for _keys in _output_dict_keys)
         return outputs
     except AssertionError:
-        logging.warning("Output of the model doesnt meet the requirement of pytorchFI object detection component")
+        logging.warning("Output of the model doesnt meet the requirement of pytorchALFI object detection component")
         outputs = [{'instances': outputs}]
         return outputs
 

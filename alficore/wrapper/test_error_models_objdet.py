@@ -22,7 +22,8 @@ import json
 # from alficore import dataloader
 from alficore.dataloader.coco_loader import CoCo_obj_det_native_dataloader
 from alficore.dataloader.kitti_loader import Kitti_obj_det_native_dataloader
-from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks_v3, get_max_min_lists_in, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks
+from alficore.dataloader.lyft_json_loader import Lyft_obj_det_native_dataloader
+from alficore.ptfiwrap_utils.hook_functions_objDet import set_ranger_hooks_v3, set_ranger_hooks_v4, get_max_min_lists_in, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks
 from alficore.ptfiwrap_utils.utils import read_yaml
 from alficore.wrapper.ptfiwrap import ptfiwrap
 from alficore.evaluation.coco_evaluation import COCOEvaluator
@@ -68,6 +69,8 @@ class TestErrorModels_ObjDet:
         self.create_new_folder = kwargs.get("create_new_folder", False)
         self.resume_dir      = kwargs.get("resume_dir", None) 
         self.num_faults = kwargs.get("num_faults", 1)
+        self.layer_num = kwargs.get("layer_num", None)
+        self.rnd_mode = kwargs.get("rnd_mode", None)
         self.fault_file = kwargs.get("fault_file", None)
         self.num_runs   = kwargs.get("num_runs", None)
         self.resume_inj = kwargs.get("resume_inj", False)
@@ -118,16 +121,18 @@ class TestErrorModels_ObjDet:
         self.model_eval_method = kwargs.get("eval_method", ['coco',])
         self.config_location   = kwargs.get("config_location", None)
         self.device            = kwargs.get("device", torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
-        self._outputdir       = kwargs.get("result_files", None)
+        self._outputdir        = kwargs.get("result_files", None)
         self.num_faults        = kwargs.get("num_faults", None)
+        self.layer_num         = kwargs.get("layer_num", None)
+        self.rnd_mode         = kwargs.get("rnd_mode", None)
         self.model_name        = kwargs.get("model_name", None)
         self.copied_scenario_data = {}
 
         self.dl_attr.dl_dataset_name = self.dl_attr.dl_dataset_name.lower()
         if self.orig_model_FI_run :
-            self.model_wrapper = ptfiwrap(model=self.ORIG_MODEL, device=self.device, config_location=self.config_location, scenario_data=self.copied_scenario_data, create_runset=False)
+            self.model_wrapper = ptfiwrap(model=self.ORIG_MODEL, device=self.device, config_location=self.config_location, scenario_data=self.copied_scenario_data, create_runset=False, ranger_bounds=self.ranger_bounds)
         if self.resil_model_FI_run:
-            self.resil_wrapper = ptfiwrap(model=self.RESIL_MODEL, device=self.device, config_location=self.config_location, scenario_data=self.copied_scenario_data, create_runset=False)
+            self.resil_wrapper = ptfiwrap(model=self.RESIL_MODEL, device=self.device, config_location=self.config_location, scenario_data=self.copied_scenario_data, create_runset=False, ranger_bounds=self.ranger_bounds)
         self.reference_wrapper       = self.model_wrapper if self.orig_model_FI_run else \
                                             self.resil_wrapper if self.resil_model_FI_run else None
         self.model_scenario          = self.reference_wrapper.get_scenario() if not self.disable_FI else None
@@ -200,7 +205,12 @@ class TestErrorModels_ObjDet:
        
         if 'coco' in self.dl_attr.dl_dataset_name.lower():
             self.dataloader = CoCo_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name=self.model_name)
-        if self.dl_attr.dl_dataset_name=='kitti':
+            # self.dataloader = Kitti_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
+        elif self.dl_attr.dl_dataset_name=='kitti':
+            self.dataloader = Kitti_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
+        elif self.dl_attr.dl_dataset_name=='lyft':
+            self.dataloader = Lyft_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
+        else:
             self.dataloader = Kitti_obj_det_native_dataloader(dl_attr=self.dl_attr, dnn_model_name = self.model_name)
 
 
@@ -277,7 +287,8 @@ class TestErrorModels_ObjDet:
                 # TODO: For per_epoch should unify policy in set_ptfi_batch_pointer
                 if self.reference_parser.inj_policy == "per_image" or self.reference_parser.inj_policy == "per_batch":
                     if self.reference_parser.rnd_mode == 'neurons':
-                        assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
+                        if self.reference_wrapper.rnd_value_type != 'bitflip_bounds':
+                            assert (bit_flip_monitor == self.reference_wrapper.runset_updated[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
                     elif self.reference_parser.rnd_mode == 'weights':
                         assert (bit_flip_monitor == self.reference_wrapper.runset[6,:][:runset_length]).all(), "Epoch- {}: {} Sanity check: bit flips monitored is not matching with the actual runset".format(num_runs, used_model)
                 elif self.reference_parser.inj_policy=='per_epoch':
@@ -322,25 +333,100 @@ class TestErrorModels_ObjDet:
             print("Oops!  That was no valid bounds. Check the bounds and Try again...")
         return activated
 
+    def __clean_ranger_hooks_v2(self, hook_handles, hook_list, resil='global', use_v2=True):
+        activated = [] #protection layers activated in one image batch!
+        try:
+            import itertools
+            curr_batch_size = 1
+            activated = [] #protection layers activated in one image batch!
+            monitor_mean_var = []
+            if hook_list == []:
+                activated = None
+            else:
+                # if ranger_hook == 'global':
+                if 'global' in resil.lower():
+                    ## for local ranger detector hooks attached to each layer
+                    ## for global ranger detector hooks attached to each layer
+                    acts = hook_list.acts_dets
+                    # monitor_mean = np.array(hook_list.monitor_mean)
+                    # monitor_var = np.array(hook_list.monitor_var)
+                    lens = np.unique([len(x) for x in acts])
+                    if len(lens) > 1 or (len(lens) == 1 and lens[0] != curr_batch_size): #multi-use
+                        activated = [np.sum([np.sum(n) for n in acts])]
+                    else:
+                        activated = np.sum(np.array(acts),0) #sum over layers
+                else:
+                    ## for local ranger detector hooks attached to each layer
+                    if not use_v2:
+                        acts = [n.act_dets for n in hook_list]
+                        monitor_mean = np.array(list(itertools.chain.from_iterable([n.monitor_mean for n in hook_list])))
+                        monitor_var = np.array(list(itertools.chain.from_iterable([n.monitor_var for n in hook_list])))
+                    elif use_v2:
+                        acts = hook_list.acts_dets
+                        monitor_mean = np.array(hook_list.monitor_mean)
+                        monitor_var = np.array(hook_list.monitor_var)                    
+                    lens = np.unique([len(x) for x in acts])
+                    if len(lens) > 1 or (len(lens) == 1 and lens[0] != curr_batch_size): #multi-use
+                        activated = [np.sum([np.sum(n) for n in acts])]
+                    else:
+                        activated = np.sum(np.array(acts),0) #sum over layers
+            # if ranger_hook == 'global':
+            if 'global' in resil.lower():
+                hook_list.clear()
+                for i in range(len(hook_handles)):
+                    hook_handles[i].remove()
+            else:
+                if not use_v2:
+                    for i in range(len(hook_handles)):
+                        hook_handles[i].remove()
+                        hook_list[i].clear()
+                else:
+                    hook_list.clear()
+                    for i in range(len(hook_handles)):
+                        hook_handles[i].remove()
+        except ValueError:
+            print("Oops!  That was no valid bounds. Check the bounds and Try again...")
+        return activated
     
-    def __clean_ranger_hooks(self, hook_handles, hook_list):
+    def __clean_ranger_hooks(self, hook_handles, hook_list, resil='global', use_v2=True):
         activated = [] #protection layers activated in one image batch!
         try:
             
             if hook_list == []:
                 activated = None
             else:
-                acts = [n.act for n in hook_list]
-                lens = np.unique([len(x) for x in acts])
-                if len(lens) > 1 or (len(lens) == 1 and lens[0] != self.dataloader.curr_batch_size): #multi-use
-                    activated = [np.sum([np.sum(n) for n in acts])]
+                # if ranger_hook == 'global':
+                if 'global' in resil.lower():
+                    ## for local ranger detector hooks attached to each layer
+                    ## for global ranger detector hooks attached to each layer
+                    acts = hook_list.acts
+                    lens = np.unique([len(x) for x in acts])
+                    if len(lens) > 1 or (len(lens) == 1 and lens[0] != self.dataloader.curr_batch_size): #multi-use
+                        activated = [np.sum([np.sum(n) for n in acts])]
+                    else:
+                        activated = np.sum(np.array(acts),0) #sum over layers
                 else:
-                    activated = np.sum(np.array(acts),0) #sum over layers
-
-            for i in range(len(hook_handles)):
-                hook_handles[i].remove()
-                hook_list[i].clear()
-            
+                    ## for local ranger detector hooks attached to each layer
+                    acts = [n.act for n in hook_list]
+                    lens = np.unique([len(x) for x in acts])
+                    if len(lens) > 1 or (len(lens) == 1 and lens[0] != self.dataloader.curr_batch_size): #multi-use
+                        activated = [np.sum([np.sum(n) for n in acts])]
+                    else:
+                        activated = np.sum(np.array(acts),0) #sum over layers
+            # if ranger_hook == 'global':
+            if 'global' in resil.lower():
+                hook_list.clear()
+                for i in range(len(hook_handles)):
+                    hook_handles[i].remove()
+            else:
+                if not use_v2:
+                    for i in range(len(hook_handles)):
+                        hook_handles[i].remove()
+                        hook_list[i].clear()
+                else:
+                    hook_list.clear()
+                    for i in range(len(hook_handles)):
+                        hook_handles[i].remove()
 
         except ValueError:
             print("Oops!  That was no valid bounds. Check the bounds and Try again...")
@@ -409,7 +495,7 @@ class TestErrorModels_ObjDet:
         Note: resume_inj should be used only when fault file is passed.
         '''
         try:
-            corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.CORR_MODEL, resil='ranger_trivial')
+            corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.CORR_MODEL, resil='{}_trivial'.format(self.resil_name))
             if self.inf_nan_monitoring:
                 self.nan_flag_image_corr_model.extend([a for a in nan_dict_corr['flag']]) #Flag true or false per image depending if nan found at any layer
                 self.nan_inf_flag_image_corr_model.extend([nan_dict_corr['flag'][h] or inf_dict_corr['flag'][h] for h in range(len(inf_dict_corr['flag']))])
@@ -431,6 +517,7 @@ class TestErrorModels_ObjDet:
             """
             self.logger.warning("fault injection has caused the corr model to crash; storing empty results for this batch, see TODO\n\
                                 The faults are : {}".format(self.reference_wrapper.CURRENT_FAULTS))
+            corr_outputs, nan_dict_corr, inf_dict_corr, detected_activations, penulLayer, quant_list = self.attach_hooks(self.CORR_MODEL, resil='{}_trivial'.format(self.resil_name))
             outputs = [{"instances":torch.empty(0, 0)} for _ in range(len(self.dataloader.data))]
             if self.ranger_detector:
                 activation_freq = [0 for i in range(self.dataloader.curr_batch_size)]
@@ -534,7 +621,7 @@ class TestErrorModels_ObjDet:
 
         if resil is not None and self.ranger_detector:
             # todo: adapt resil to accomodate different ranger methods
-            hook_handles_acts, hook_list = set_ranger_hooks_v3(model, self.ranger_bounds, resil=resil, detector=self.ranger_detector)
+            hook_handles_acts, hook_list = set_ranger_hooks_v4(model, self.ranger_bounds, resil=resil, detector=self.ranger_detector)
 
         if self.inf_nan_monitoring:
             save_nan_inf, hook_handles_nan_inf, hook_layer_names = set_nan_inf_hooks(model)
@@ -549,7 +636,7 @@ class TestErrorModels_ObjDet:
         if self.inf_nan_monitoring:
             nan_dict_corr, inf_dict_corr = run_nan_inf_hooks(save_nan_inf, hook_handles_nan_inf, hook_layer_names)
         if resil is not None and self.ranger_detector:
-            detected_activations = self.__clean_ranger_hooks(hook_handles_acts, hook_list)
+            detected_activations = self.__clean_ranger_hooks_v2(hook_handles_acts, hook_list, resil=resil)
         if self.sim_score:
             penulLayer = run_simscore_hooks(save_penult_layer, hook_handles_penult_layer)
         if self.quant_extr:
@@ -668,6 +755,19 @@ class TestErrorModels_ObjDet:
             _attr = np.hstack([_attr, tile_attr])
         return _attr
 
+    def __save_original_fault_file(self):
+        if (not self.copy_yml_scenario and not self.disable_FI) or self.create_new_folder:
+            fault_bin = os.path.join(self.outputdir, self.dataset_name, self.func + '_' +
+                str(self.num_faults) + '_' + str(self.num_runs) + '_' + str(self.dl_attr.dl_batch_size) + 'bs' + '_' + self.dl_attr.dl_dataset_name + '_fault_locs.bin')
+            self.model_scenario['fi_logfile'] = os.path.basename(fault_bin)
+            runset = self.reference_wrapper.runset
+            os.makedirs(os.path.dirname(fault_bin), exist_ok=True)
+            f = open(fault_bin, 'wb')
+            pickle.dump(runset, f)
+            f.flush()
+            f.close()
+        print("Saved original fault file")
+        
     def __save_fault_file(self):
         if not self.disable_FI:
 
@@ -772,17 +872,6 @@ class TestErrorModels_ObjDet:
                 
                 print('{}: saving fault file with bit flip direction info with {} fault runset length and total {} bit flips into {}'.format(used_model, len(runset[0,:]), len(bit_flips_direc), f.name))
 
-        if (not self.copy_yml_scenario and not self.disable_FI) or self.create_new_folder:
-            fault_bin = os.path.join(self.outputdir, self.dataset_name, self.func + '_' +
-                str(self.num_faults) + '_' + str(self.num_runs) + '_' + str(self.dl_attr.dl_batch_size) + 'bs' + '_' + self.dl_attr.dl_dataset_name + '_fault_locs.bin')
-            self.model_scenario['fi_logfile'] = os.path.basename(fault_bin)
-            runset = self.reference_wrapper.runset
-            os.makedirs(os.path.dirname(fault_bin), exist_ok=True)
-            f = open(fault_bin, 'wb')
-            pickle.dump(runset, f)
-            f.flush()
-            f.close()
-
         if self.resil_model_run:
             resil_detections_file = os.path.join(self.outputdir, self.dataset_name, self.func + '_' +
                 str(self.num_faults) + '_' + str(self.num_runs) + '_' + str(self.dl_attr.dl_batch_size) + 'bs' + '_' + self.dl_attr.dl_dataset_name + '_{}_detections.bin'.format(self.resil_name))
@@ -845,28 +934,29 @@ class TestErrorModels_ObjDet:
         return None
 
     def set_FI_attributes(self):
+        self.bit_range = str(self.reference_parser.rnd_bit_range) if not self.disable_FI else '[0]'
+        self.bit_range = self.bit_range.replace(" ", "")
+        self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
+        # self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.inj_value_type)
+        self.dataset_name = self.dl_attr.dl_dataset_name
+        self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.reference_parser.rnd_mode) if not self.disable_FI else "no_inj"
         if not self.disable_FI:
             self.scenario_is_modified = True
             if self.num_faults:
                 self.model_scenario["max_faults_per_image"] = self.num_faults
             else:
                 self.num_faults = self.reference_wrapper.parser.max_faults_per_image
+            if self.layer_num:
+                self.model_scenario["rnd_layer_selected"] =True
+                self.model_scenario["rnd_layer_selected_num"] = self.layer_num
+                self.model_scenario["rnd_layer_weighted"] = False
+            if self.rnd_mode:
+                self.model_scenario["rnd_mode"] = self.rnd_mode
             if not self.copy_yml_scenario:
                 if self.num_runs:
                     self.model_scenario["num_runs"] = self.num_runs
                 else:
                     self.num_runs = self.reference_wrapper.parser.num_runs
-                self.bit_range = str(self.reference_parser.rnd_bit_range) if self.reference_parser.rnd_bit_range else '[0_{}]'.format(self.reference_parser.rnd_value_bits)
-                self.bit_range = self.bit_range.replace(" ", "")
-                if self.resume_inj:
-                    ## not fully developed ## under development
-                    ## TODO: while resuming copy the bit flip direction and fault locations from fault files of corrupt and ranger fault files.
-                    self.outputdir = self.resume_dir
-                else:
-                    self.outputdir  = os.path.join(self._outputdir, '{}_{}_trials'.format(
-                        self.model_name, self.num_runs), '{}_injs'.format(self.reference_parser.rnd_mode), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, self.bit_range))
-
-
             if self.fault_file and self.copy_yml_scenario:
                 assert up(self.fault_file) == up(self.model_scenario_file), "Fault file and scenario file don't belong to same experiment folder"
                 self.model_scenario["read_from_file"] = self.fault_file
@@ -884,35 +974,7 @@ class TestErrorModels_ObjDet:
                 ## load updated scenario; to be used to store model scenario as dictionary in the form json or yml 
                 self.model_scenario = self.reference_wrapper.get_scenario()
 
-            self.resume_epoch = 0
-            self.resume_pointer = 0
-            if self.resume_inj:
-                for _epoch in range(self.num_runs):
-                    if self.__check_resume_inj_status(model_type='corr_model', epoch=_epoch):
-                        self.resume_epoch = _epoch + 1
-                        continue
-                    else:
-                        print('resuming the experiment from {} epoch'.format(self.resume_epoch))
-                        break
-                if self.reference_parser.inj_policy == "per_image":
-                    if self.reference_parser.rnd_mode == 'neurons':
-                        self.resume_pointer = self.resume_epoch*self.dataloader.dataset_length*self.num_faults
-                    elif self.reference_parser.rnd_mode == 'weights':
-                        self.resume_pointer = self.resume_epoch*self.num_faults
-                elif self.reference_parser.inj_policy == "per_epoch":
-                    self.resume_pointer = self.resume_epoch*self.num_faults
-                elif self.reference_parser.inj_policy == 'per_batch':
-                    self.resume_pointer = int(np.ceil(self.resume_epoch*self.dataloader.dataset_length*self.num_faults/self.dl_attr.dl_batch_size))
-            if self.orig_model_FI_run:
-                self.orig_models_fault_iter = self.model_wrapper.get_fimodel_iter(resume_pointer=self.resume_pointer)
-            if self.resil_model_FI_run:
-                self.resil_models_fault_iter = self.resil_wrapper.get_fimodel_iter(resume_pointer=self.resume_pointer)
-            self.num_runs = self.reference_wrapper.parser.num_runs
-            self.bit_range = str(self.reference_parser.rnd_bit_range) if self.reference_parser.rnd_bit_range else '[0_{}]'.format(self.reference_parser.rnd_value_bits)
-            self.bit_range = self.bit_range.replace(" ", "")
-            self.dataset_name = self.dl_attr.dl_dataset_name
             self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
-            self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.reference_parser.rnd_mode)
             if self.copy_yml_scenario and not(self.create_new_folder):
                 outputdir = up(up(up(list(Path(os.path.dirname(self.fault_file)).glob('**/*.yml'))[0])))
                 if self.resume_inj:
@@ -924,10 +986,33 @@ class TestErrorModels_ObjDet:
             else:
                 self.outputdir  = os.path.join(self._outputdir, '{}_{}_trials'.format(
                         self.model_name, self.num_runs), '{}_injs'.format(self.inj_value_type), '{}'.format(self.reference_parser.inj_policy), 'objDet_{}_{}_faults_{}_bits'.format(self.time_based_uuid, self.num_faults, self.bit_range))
-        else:
-            self.dataset_name = self.dl_attr.dl_dataset_name
-            self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
-            self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.inj_value_type)
+            self.resume_epoch = 0
+            self.resume_pointer = 0
+            if self.resume_inj:
+                for _epoch in range(self.num_runs):
+                    if self.__check_resume_inj_status(model_type='corr_model', epoch=_epoch):
+                        self.resume_epoch = _epoch + 1
+                        continue
+                    else:
+                        print('resuming the experiment from {} epoch'.format(self.resume_epoch))
+                        break
+                if self.reference_parser.rnd_mode == "neurons":
+                    if self.reference_parser.inj_policy == "per_image" or self.reference_parser.inj_policy == 'per_batch':
+                        self.resume_pointer = self.resume_epoch*self.dataloader.dataset_length*self.num_faults + self.dataloader.datagen_iter_cnt*self.num_faults
+                    elif self.reference_parser.inj_policy == "per_epoch":
+                        self.resume_pointer = self.resume_epoch*self.dataloader.dataset_length*self.num_faults + self.dataloader.datagen_iter_cnt*self.num_faults
+                if self.reference_parser.rnd_mode == "weights":
+                    if self.reference_parser.inj_policy == "per_epoch":
+                        self.resume_pointer = self.resume_epoch*self.num_faults
+                    elif self.reference_parser.inj_policy == 'per_batch':
+                        self.resume_pointer = int(np.ceil(self.resume_epoch*self.dataloader.dataset_length*self.num_faults*(1/self.dl_attr.dl_batch_size))) + int(np.ceil(self.dataloader.datagen_iter_cnt*self.num_faults/(self.dl_attr.dl_batch_size or 1)))
+
+            if self.orig_model_FI_run:
+                self.orig_models_fault_iter = self.model_wrapper.get_fimodel_iter(resume_pointer=self.resume_pointer)
+            if self.resil_model_FI_run:
+                self.resil_models_fault_iter = self.resil_wrapper.get_fimodel_iter(resume_pointer=self.resume_pointer)
+            self.num_runs = self.reference_wrapper.parser.num_runs
+
     def __copy_dl_attr(self):
         """
         copies dl_attr class attr to the scenario dictionary.
@@ -954,8 +1039,7 @@ class TestErrorModels_ObjDet:
         after each batch of inference model's evalutors process(inputs, outputs) will be called
         to store epoch's interim results in json file.
         """
-        self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
-        self.func = '{}_test_random_sbf_{}_inj'.format(self.model_name, self.inj_value_type)
+        # self.inj_value_type = self.reference_wrapper.value_type if not self.disable_FI else "with disable FI"
         self.__copy_dl_attr()
         self.__ptfi_dataloader()
         self.set_FI_attributes()
@@ -963,6 +1047,7 @@ class TestErrorModels_ObjDet:
         self.golden_epoch = True
         self.__save_model_scenario()
         self.bit_range = self.bit_range if self.bit_range else 0
+        self.__save_original_fault_file()
         for _epoch in tqdm(range(self.resume_epoch, self.num_runs), desc="injecting {} faults with {} inj policy - {} runs, {} faults & {} bit_range".format(self.inj_value_type, \
                 self.reference_parser.inj_policy if not self.disable_FI else 'no injection', \
                     self.num_runs, self.num_faults if not self.disable_FI else '0', \

@@ -32,6 +32,7 @@ run_type: single
 
 # This determines the total number of fault definitions that are prepared
 # The relevant parameters are:
+# dataset_size: number of images in your test dataset
 # num_runs: number of times you plan to iterate through the whole dataset
 # the following 2 arguments are mutually exclusive:
 # num_fault_per_image: how many faults should be injected per image
@@ -42,7 +43,8 @@ run_type: single
 # a: rnd_mode (either neurons or weights) the number of faults is calculated based on the number of relevant neurons
 # or weights respectively in the model
 # b: layer_types (either conv2d, conv3d or fcc) relevant neurons or weights are those related to the selected layer type
-num_runs: 2
+dataset_size: 1 # keep at 1 for weight injection if used only once per epoch
+num_runs: 3
 # you can only set one of num_faults_per_image or max_fault_rate
 max_faults_per_image: 1
 #max_fault_rate: 0.01
@@ -56,8 +58,14 @@ max_faults_per_image: 1
 # conv2d: 2D convolution layer
 # conv3d: 3D convolution layer
 # fcc: fully connected layer = nn.Linear type in pytorch
-# layer_types: [conv2d, fcc]
+# layer_types: [conv2d, fcc, leakyRelu, batchnorm, attn_fcc, embedding]
 layer_types: [conv2d]
+# layer_types: [attn_fcc]
+# layer_types_named: ['attn']
+# layer_types: [embedding]
+# layer_types_named: ['embedding']
+# layer_types_exclude: ['backbone']
+
 
 #####################################################################################
 #                           Random fault definition                                 #
@@ -83,10 +91,11 @@ layer_types: [conv2d]
 rnd_mode: neurons
 rnd_mode: weights
 # inj_policy_opts = ["per_image", "per_epoch", "per_batch"]
+inj_policy: per_image
+inj_policy: per_epoch
 inj_policy: per_batch
-# inj_policy: per_epoch
-# inj_policy: per_batch
-
+#fault_injec_opt: ['input', 'output']
+# fault_injec_hook_type: 'input'
 # mandatory, no defaults
 # batch only used for neuron
 rnd_batch: change
@@ -114,18 +123,22 @@ rnd_value: change
 #rnd_value_max: 1000
 
 # rnd_value_type: ["number", "bitflip", "bitflip_bounds", "bitflip_weighted", "stuckat_0", "stuckat_1"]
-# rnd_value_type: stuckat_1
+rnd_value_type: stuckat_1
 rnd_value_type: bitflip
+# rnd_value_type: bitflip_bounds
 rnd_value_bits: 32
 # rnd_bit_range: optional, defines the bit range where a bit flip should happen
 # the index is 0 based
 # [from, to], both values are included in the range
 # if only one value us given then exactly this bit is flipped
 # rnd_bit_range: [1]
+rnd_bit_range: [0, 9]
+# rnd_bit_range: [1]
+# rnd_bit_range_exclude: [1]
 # rnd_bit_range: [0,9]
-rnd_bit_range: [1]
-rnd_bit_range: [0,8]
-rnd_bit_range: [0,31]
+# rnd_bit_range: [0]
+# rnd_bit_range: [0,8]
+# rnd_bit_range: [0,31]
 
 #####################################################################################
 #                           PytorchFI parameters                                    #
@@ -140,8 +153,12 @@ rnd_bit_range: [0,31]
 # ptf_W: 224
 ## kitti
 # # detectron2 kitti
-# ptf_H: 370
-# ptf_W: 1224
+ptf_H: 370
+ptf_W: 1224
+
+ptf_H: 350
+ptf_W: 1200
+
 # detectron2 coco
 # ptf_H: 416
 # ptf_W: 416
@@ -161,8 +178,8 @@ rnd_bit_range: [0,31]
 # ptf_W: 416
 
 # ultralytics yolov3 (except coco)
-ptf_H: 384
-ptf_W: 640
+# ptf_H: 384
+# ptf_W: 640
 
 # ultralytics yolov3 (except coco)
 #ptf_H: 224

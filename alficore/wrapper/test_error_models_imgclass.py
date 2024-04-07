@@ -17,7 +17,7 @@ from os.path import dirname as up
 import json
 import torchvision
 from copy import deepcopy
-from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks_v3, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks, set_feature_trace_hooks
+from alficore.ptfiwrap_utils.hook_functions_imgClass import set_ranger_hooks_v3, set_simscore_hooks, set_nan_inf_hooks, run_nan_inf_hooks, run_simscore_hooks, set_quantiles_hooks, set_feature_trace_hooks
 from alficore.ptfiwrap_utils.utils import read_yaml
 from alficore.wrapper.ptfiwrap import ptfiwrap
 # from alficore.resiliency_methods.ranger import Ranger, Ranger_trivial, Ranger_BackFlip, Ranger_Clip, Ranger_FmapAvg, Ranger_FmapRescale

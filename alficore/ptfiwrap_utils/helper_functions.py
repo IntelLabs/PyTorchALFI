@@ -6,7 +6,11 @@ import numpy as np
 import json
 import os
 import glob
-from collections import Iterable
+import sys
+if sys.version_info[1]>9:
+    from collections.abc import Iterable
+else:
+    from collections import Iterable
 import subprocess
 import numpy as np
 # ImageNet -----------------------------------------------
@@ -16,7 +20,7 @@ class TEM_Dataloader_attr:
     Test_Error_Models_Dataloader_attr:
     One class for all attributes related to dataloaders of pytorchFI-Wrapper.
     """
-    def __init__(self, dl_dataset_name="CoCo2017", dl_shuffle=True, dl_random_sample=False, dl_sampleN=1000, dl_scenes=[-1], dl_sensor_channels=["None"], dl_mode="image", \
+    def __init__(self, dl_dataset_name="CoCo2017", dl_shuffle=False, dl_random_sample=False, dl_sampleN=1000, dl_scenes=[-1], dl_sensor_channels=["None"], dl_mode="image", \
         dl_batch_size=1, dl_num_workers=1, dl_dataset_type="val", dl_device=None, dl_dirname=None, dl_transform=None, dl_img_root=None, dl_gt_json=None) -> None:
         self.dl_dataset_name    = dl_dataset_name
         self.dl_shuffle         = dl_shuffle
@@ -143,7 +147,8 @@ def save_Bounds_minmax(activations_in, bnds_name):
     :return: saves to a txt file in /bounds
     """
 
-    bnd_path = './bounds/' + str(bnds_name) + '.txt'
+    # bnd_path = './bounds/' + str(bnds_name) + '.txt'
+    bnd_path = bnds_name
     f = open(bnd_path, "w+")
     for u in range(len(activations_in)):
         sv = ""
@@ -239,6 +244,22 @@ def get_max_min_lists_in(activations_in):
     return np.array(activations_in2)
 
 
+def get_mean_var(activations_out):
+    batch_nr = activations_out[0].shape[0]
+    nr_rangers = len(activations_out)
+    activations_in2 = []
+    mean_var_lists = []
+
+    for b in range(batch_nr): #walk through a batch (here usually just 1)
+        mean_var_list_out = []
+        for r in range(nr_rangers): #walk through a layer
+            mean = torch.mean(activations_out[r][b]).tolist()
+            var = torch.var(activations_out[r][b]).tolist()
+            mean_var_list_out.append([mean, var])
+        mean_var_lists.append(mean_var_list_out)
+    mean_var_lists = np.array(mean_var_lists)
+    return np.squeeze(mean_var_lists)
+
 def get_max_min_lists(activations_in, activations_out, get_perc=False):
     """
     Transforms the act_in, act_out dictionaries to simpler forms with only min, max per layer. Note act_in, act_out have slightly different forms.
@@ -252,7 +273,7 @@ def get_max_min_lists(activations_in, activations_out, get_perc=False):
     #activations_out structure: nr ranger layers, batch size, channel, height, width
 
     
-    batch_nr = activations_out[0].size()[0]
+    batch_nr = activations_out[0].shape[0]
     nr_rangers = len(activations_out)
     activations_in2 = []
     activations_out2 = []

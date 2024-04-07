@@ -1108,4 +1108,3 @@ def print_nan_inf_hist_v2(net, nan_dict_corr, inf_dict_corr):
         info.append([u, layer_list[u], 'in', in_info, 'out', out_info])
 
     print(tabulate(info)) #, headers=['Name', 'Age']
-

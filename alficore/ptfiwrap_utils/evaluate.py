@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import torch
+import os
 from torch.autograd import Variable
 import pickle
 import numpy as np
@@ -11,7 +12,7 @@ import sys
 from tqdm import tqdm
 # import collections
 import gc
-from alficore.ptfiwrap_utils.hook_functions import set_ranger_hooks, set_ranger_hooks_ReLU, get_max_min_lists
+from alficore.ptfiwrap_utils.hook_functions_objDet import set_ranger_hooks, set_ranger_hooks_ReLU, get_max_min_lists, get_mean_var
 from alficore.dataloader.objdet_baseClasses.common import pad_to_square, resize
 from alficore.ptfiwrap_utils.helper_functions import get_savedBounds_minmax, save_Bounds_minmax, get_max_min_lists
 from alficore.ptfiwrap_utils.helper_functions import TEM_Dataloader_attr
@@ -174,7 +175,7 @@ def extract_ranger_bounds(data_loader, net, file_name, dataset='imagenet'):
 
 
 
-def get_Ranger_bounds2(model, ranger_file_name, dl_attr:TEM_Dataloader_attr, get_perc=False, get_ftraces=False):
+def get_Ranger_bounds2(model, model_name, ranger_file_name, dl_attr:TEM_Dataloader_attr, get_perc=False, get_ftraces=False):
     # Confirmed: 72 leaky relu layers, no relu layers
     if 'coco'.lower() in dl_attr.dl_dataset_name:
         from alficore.dataloader.coco_loader import CoCo_obj_det_dataloader
@@ -205,14 +206,144 @@ def get_Ranger_bounds2(model, ranger_file_name, dl_attr:TEM_Dataloader_attr, get
         print('Loading ImageNet...')
         dataloader = PPP_obj_det_dataloader(dl_attr)
 
-
+    from alficore.dataloader.coco_loader import CoCo_obj_det_native_dataloader
+    from alficore.dataloader.kitti_loader import Kitti_obj_det_native_dataloader
+    from alficore.dataloader.lyft_json_loader import Lyft_obj_det_native_dataloader
+    if 'coco' in dl_attr.dl_dataset_name.lower():
+        dataloader = CoCo_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name=model_name)
+        # dataloader = Kitti_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    elif dl_attr.dl_dataset_name=='kitti':
+        dataloader = Kitti_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    elif dl_attr.dl_dataset_name=='lyft':
+        dataloader = Lyft_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    else:
+        dataloader = Kitti_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+            
     # net_for_bounds = model
     act_output = extract_ranger_bounds_auto2(dataloader, model, ranger_file_name, get_perc=get_perc, get_ftraces=get_ftraces) # gets also saved automatically
     # print('check Ranger output', act_output)
     # sys.exit()
     return act_output
 
+def extract_ranger_bounds_objdet(dl_attr, model, model_name, file_name, resil_name=None):
+    """
+    Extracts the ranger bounds from all the images in test_loader, for modelwork model and saves them in bounds directory.
+    Applies to all activation layers (ReLU) not the Ranger. Only saves the input bounds.
+    :param dataloader: dataset loader, pytorch dataloader
+    :param model: modelwork (pretrained), pytorch model
+    :param file_name: Name for bounds file, string
+    :param dataset_name: Name of the dataset using which Ranger bounds are generated
+    :return: list of min, max ranger inputs of the form list of [[min, max], [min, max], ...]
+    :return: list of min, max ranger output of the form list of [[min, max], [min, max], ...]
+    """
 
+    from alficore.dataloader.coco_loader import CoCo_obj_det_native_dataloader
+    from alficore.dataloader.kitti_loader import Kitti_obj_det_native_dataloader
+    from alficore.dataloader.lyft_json_loader import Lyft_obj_det_native_dataloader
+    dl_attr.dl_sampleN = 0.2
+    # dl_attr.dl_sampleN = 0.0005
+    if 'coco' in dl_attr.dl_dataset_name.lower():
+        dataloader = CoCo_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name=model_name)
+        # dataloader = Kitti_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    elif dl_attr.dl_dataset_name=='kitti':
+        dataloader = Kitti_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    elif dl_attr.dl_dataset_name=='lyft':
+        dataloader = Lyft_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    else:
+        dataloader = Kitti_obj_det_native_dataloader(dl_attr=dl_attr, dnn_model_name = model_name)
+    
+
+    act_in_global_min = None  # Lists that collect all mins and max across the image runs
+    act_in_global_max = None
+    act_out_global_min = None
+    act_out_global_max = None
+    model = model.to(device)
+    model.eval()
+
+    # memory debugging ---
+    # pid = os.getpid()
+    # py = psutil.Process(pid)
+    # init_mem = py.memory_info()[0] / 2. ** 30
+    # print(f"Torch Memory: Init memory = {init_mem:.3e}Gb")
+    # ----------------------
+
+    # save_input, save_output, hook_handles_in, hook_handles_out = set_ranger_hooks(model) #classes that save activations via hooks
+    save_input, save_output, hook_handles_in, hook_handles_out = set_ranger_hooks(model)  # classes that save activations via hooks
+    # hook_handles_in, hook_handles_out = set_ranger_hooks_ReLU(model)  # classes that save activations via hooks
+
+    mean_var_list = []
+    with torch.no_grad():
+        print('Extracting bounds from data set' + '(' + str(dataloader.dataset_length) + ' batches)' + '...')
+        # for j, (images, labels) in enumerate(dataloader):
+        #     if j % 100 == 0:
+        #         print(' Batch nr:', j)
+
+        #     model(images) #have to call forward pass to activate the hooks, output doesnt matter here
+        # dataloader = iter(dataloader)
+        i = 0
+        pbar = tqdm(total = dataloader.dataset_length)
+        while dataloader.data_incoming:
+            dataloader.datagen_itr()
+            images = dataloader.data
+            # images = preprocess_image_yolo_model(dataloader.data)
+            model(images)
+            act_in = save_input.inputs
+            act_out = save_output.outputs
+            module_names = save_output.module_names
+
+            save_input.clear() #clear the hook lists, otherwise memory leakage
+            save_output.clear()
+
+            # # Check activations (extract only min, max from the full list of activations)
+            mean_var_list_per_img = get_mean_var(act_out)
+            mean_var_list.append(mean_var_list_per_img)
+            act_in, act_out = get_max_min_lists(act_in, act_out)
+
+            act_in_global_min, act_in_global_max = update_act_minmaxlists(act_in_global_min, act_in_global_max, act_in) #flat lists
+            act_out_global_min, act_out_global_max = update_act_minmaxlists(act_out_global_min, act_out_global_max, act_out)
+
+            # Debug memory ---------------------------------
+            # memoryUse = py.memory_info()[0] / 2. ** 30
+            # print(f"Torch Memory: Memory = {memoryUse:.3e}Gb")
+            # print('object sizes model:', sys.getsizeof(model), model.__sizeof__())
+            # print('object sizes output:', sys.getsizeof(output))
+            # --------------------------------------------------
+            gc.collect() # collect garbage
+            pbar.update(dataloader.curr_batch_size)
+            i+=1
+        pbar.close()
+            # if j == 3: #break if smaller dataset should be used
+            #     break
+
+    # below loop required to solve memory leakage
+    mean_var_list = np.array(mean_var_list)
+    
+    try:
+        for i in range(len(hook_handles_in)):
+            hook_handles_in[i].remove()
+            hook_handles_out[i].remove()
+    except:
+        for key in hook_handles_in.keys():
+            hook_handles_in[key].remove()
+            hook_handles_out[key].remove()
+
+        
+    act_in_global = combine_act_minmaxlists(act_in_global_min, act_in_global_max)
+    act_out_global = combine_act_minmaxlists(act_out_global_min, act_out_global_max)
+
+    os.makedirs(os.path.dirname(file_name), exist_ok=True)
+    save_Bounds_minmax(act_out_global, file_name) #save outgoing (incoming?) activations, already in Bounds folder
+    module_file_name = file_name.replace(".txt", "_module_names.txt")
+
+    with open(module_file_name, "w") as file:
+        # Iterate through the modified strings and write each string to the file
+        for string in module_names:
+            file.write(string + "\n") 
+            
+    module_file_name = file_name.replace(".txt", "_mean_var.npy")
+    np.save(module_file_name, mean_var_list)
+            
+    return act_in_global, act_out_global, mean_var_list
 
 def extract_ranger_bounds_auto2(data_loader, net, file_name, get_perc=False, get_ftraces=False):
     """
@@ -567,9 +698,3 @@ def save_to_dict(dicti, file_name):
     pickle.dump(dicti,f)
     f.close()
     print('Dictionary saved as ' + file_name)
-
-
-
-
-
-

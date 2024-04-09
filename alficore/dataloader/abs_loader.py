@@ -9,9 +9,12 @@ from abc import ABC, abstractmethod
 import os
 import random
 import torch
+import sys, re
 from alficore.ptfiwrap_utils.helper_functions import TEM_Dataloader_attr
 from .objdet_baseClasses.catalog import DatasetCatalog, MetadataCatalog
 from .objdet_baseClasses.common import DatasetFromList, MapDataset, DatasetMapper, trivial_batch_collator
+
+python_version_str = sys.version
 
 class Abstract_Loader(ABC):
     def __init__(self, dl_attr:TEM_Dataloader_attr, dnn_model_name:str="yolov3_ultra"):
@@ -144,8 +147,6 @@ class Abstract_Loader(ABC):
 
     def datagen_itr(self):
         if self.data_incoming == True:
-            import sys, re
-            python_version_str = sys.version
             # Use regular expressions to extract the version number
             version_number = re.search(r'\d+\.\d+\.\d+', python_version_str).group()
             version = version_number.group()

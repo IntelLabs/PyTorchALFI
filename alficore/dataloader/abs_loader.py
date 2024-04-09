@@ -144,7 +144,16 @@ class Abstract_Loader(ABC):
 
     def datagen_itr(self):
         if self.data_incoming == True:
-            self.data = self.datagen_iter.next()
+            import sys, re
+            python_version_str = sys.version
+            # Use regular expressions to extract the version number
+            version_number = re.search(r'\d+\.\d+\.\d+', python_version_str).group()
+            version = version_number.group()
+            major, minor, patch = map(int, version.split('.'))
+            if (major, minor, patch) > (3, 9, 18):
+                self.data = next(self.datagen_iter)
+            else:
+                self.data = self.datagen_iter.next()
             self.curr_batch_size = len(self.data)
             self.datagen_iter_cnt = self.datagen_iter_cnt + self.curr_batch_size
             # self.images = self.images.to(self.device)

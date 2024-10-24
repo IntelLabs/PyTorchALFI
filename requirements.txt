@@ -98,7 +98,7 @@
     torch==1.13.1
     torchsummary==1.5.1
     torchvision==0.13.1
-    tqdm==4.59.0
+    tqdm==4.66.3
     transforms3d==0.3.1
     typed-ast==1.4.2
     vext==0.7.6

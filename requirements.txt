@@ -95,7 +95,7 @@
     thop==0.0.31-2005241907
     threadpoolctl==2.1.0
     tifffile==2021.4.8
-    torch==2.2.0
+    torch==2.6.0
     torchsummary==1.5.1
     torchvision==0.13.1
     tqdm==4.66.3

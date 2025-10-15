@@ -20,7 +20,6 @@
     filelock==3.8.0
     fire==0.4.0
     flake8==3.9.0
-    flownet2-private-package-ralf-graefe==0.0.1
     google-auth==2.9.1
     google-auth-oauthlib==0.4.4
     grpcio==1.53.2
